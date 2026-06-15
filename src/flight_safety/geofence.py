@@ -6,6 +6,7 @@ vehicle can't cross. UNKNOWN -> do nothing (a VRPN fault response handles that c
 """
 import rospy
 from geometry_msgs.msg import PoseStamped
+from diagnostic_msgs.msg import DiagnosticStatus
 
 INSIDE, APPROACHING, OUTSIDE, UNKNOWN = "INSIDE", "APPROACHING", "OUTSIDE", "UNKNOWN"
 _AXES = ("x", "y", "z")
@@ -53,3 +54,13 @@ class Geofence(object):
                 v[i] = -toward_lo
         sp.velocity.x, sp.velocity.y, sp.velocity.z = v
         return sp
+
+    def run_diag(self, stat):
+        """Observe-only diagnostic (used by monitor_node; no actuation)."""
+        st = self.status(rospy.Time.now())
+        if self.pos is not None:
+            stat.add("pos_xyz_m", "[%.2f %.2f %.2f]" % self.pos)
+        stat.add("status", st)
+        level = {INSIDE: DiagnosticStatus.OK, APPROACHING: DiagnosticStatus.WARN,
+                 UNKNOWN: DiagnosticStatus.WARN, OUTSIDE: DiagnosticStatus.ERROR}[st]
+        stat.summary(level, st)
