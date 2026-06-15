@@ -97,22 +97,30 @@ class Supervisor(object):
         if self.require_armed and not self.state.armed:
             return
 
+        # control priority ladder: Manual(TOP) > KILL > Response > Normal.
+        # Manual is absolute: while the pilot owns the vehicle the companion never acts (no
+        # kill). "manual" = any non-OFFBOARD mode, or RC sticks moved while in OFFBOARD.
+        if self.state.mode != "OFFBOARD":
+            for r in self.responses.values():     # pilot flying -> re-arm responses, stay out
+                r.reset()
+            return
+        if self.mux.manual_active():              # OFFBOARD + RC deflected -> hand over to pilot
+            self.mux.to_manual(now)
+            for r in self.responses.values():
+                r.reset()
+            return
+
+        # autonomous (OFFBOARD, RC centered)
         resp = self._select_response(now)
-        for r in self.responses.values():       # re-arm latched responses (e.g. hold capture)
+        for r in self.responses.values():         # re-arm latched responses (e.g. hold capture)
             if r is not resp:
                 r.reset()
-
-        # control priority ladder: 4 KILL > 3 Manual > 2 Response > 1 Normal
-        if resp is not None and getattr(resp, "terminal", False):          # 4 KILL (overrides pilot)
+        if resp is not None and getattr(resp, "terminal", False):   # KILL (autonomous only)
             self.killed = True
             rospy.logfatal("[safety] KILL")
             resp.execute(self.actions)
             return
-        if self.state.mode == "OFFBOARD" and self.mux.manual_active():     # 3 Manual (RC override)
-            self.mux.to_manual(now)
-            return
-        if self.state.mode == "OFFBOARD":                                  # 2 Response / 1 Normal
-            self.mux.publish(now, self.state, resp)
+        self.mux.publish(now, self.state, resp)                     # Response / Normal
 
 
 def main():
