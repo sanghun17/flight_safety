@@ -23,18 +23,15 @@ subsystems:
       pair_timeout_s: 0.5
       error_warn_m: 0.10
       error_error_m: 0.25
-  rc:
-    stream:                                  # RC "안나옴"
-      kind: topic
-      topic: /mavros/rc/in
-      checks: [dropout]
-      dropout_timeout_s: 0.5
+  # RC stream check removed — redundant with mavros "rc receiver" (System diag),
+  # PX4's authoritative RC health (Ok / manual kill / Fail). The supervisor still
+  # reads /mavros/rc/in VALUES for pilot takeover (control_mux below); RC loss
+  # itself is handled by PX4's native failsafe (NAV_RCL_ACT).
 
 # ── fault(monitor ERROR) -> response 매핑 (추가/수정은 여기 한 줄) ──────
 rules:
   - { monitor: vrpn/stream,      response: land }   # VRPN 안나옴
   - { monitor: vrpn/consistency, response: land }   # VRPN-local_position 불일치
-  - { monitor: rc/stream,        response: land }   # RC 안나옴
 
 # ── 응답 3종 (severity: hold<land<kill) ───────────────────────────────
 responses:
