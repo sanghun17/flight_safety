@@ -1,0 +1,7 @@
+<launch>
+  <!-- M2 reaction tier — has KILL authority. Run only for active intervention. -->
+  <arg name="config" default="$(find flight_safety)/config/monitors.yaml"/>
+  <node pkg="flight_safety" type="safety_node.py" name="flight_safety_supervisor" output="screen">
+    <rosparam command="load" file="$(arg config)"/>
+  </node>
+</launch>

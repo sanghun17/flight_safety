@@ -1,0 +1,61 @@
+# flight_safety
+
+실내 자율비행 안전 모니터링. 현재 **M1: observe-only** (감지·보고만, 개입 없음).
+
+설계: [`docs/flight_safety_architecture.md`](docs/flight_safety_architecture.md)
+
+## 구성 요소
+
+- **`TopicMonitor`** (general) — `(topic, checks, thresholds)`만 주면 감지:
+  - `dropout` — 마지막 메시지 이후 timeout 초과 (순간 공백 / liveness, ERROR)
+  - `rate` — 평균 Hz가 min_rate 미만 (만성 저throughput, WARN)
+  - `freeze` — 값(위치)이 freeze_window 동안 불변 (occlusion hold, ERROR)
+  - `jump` — 연속 두 샘플의 위치 거리가 임계 초과 (마커 스왑/텔레포트, WARN)
+  - `nan` — NaN/inf 카운트
+  - dropout/rate는 **임의 토픽**(AnyMsg, 타입 불필요). freeze/jump/nan만 `msg_type` 필요.
+- **`PingMonitor`** (general) — host 도달성/지연 (LINK 레이어).
+- **`PairConsistencyMonitor`** — 두 pose 스트림 일치도(VRPN vs `/mavros/local_position`).
+  **그냥 같아야 함** — raw 위치 오차를 직접 비교, 차이 자체를 fault로 경보 (offset 보정 없음).
+
+모니터 추가 = `config/monitors.yaml`의 `subsystems: <이름>:` 아래 항목. 코드 변경 없음.
+
+## 실행
+
+catkin ws에 넣고(또는 이 디렉터리를 `<ws>/src`에 심볼릭링크) 빌드:
+
+```bash
+catkin build flight_safety        # 또는 catkin_make
+source <ws>/devel/setup.bash
+roslaunch flight_safety monitoring.launch
+```
+
+보기:
+
+```bash
+rosrun rqt_robot_monitor rqt_robot_monitor   # 트리 뷰
+# 또는
+rostopic echo /diagnostics
+```
+
+## 읽는 법 (consistency)
+
+VRPN과 `/mavros/local_position`은 **같은 프레임/원점이라 그냥 같아야** 한다. 차이 자체가 잡으려는 fault.
+
+- `err_m` > 임계 → **불일치 = fault** (프레임 오프셋이든 발산이든 전부 잡음).
+- `err_xyz_m` → 어느 축이 어긋났는지 (프레임 정렬 디버깅에 유용).
+- 빠른 기동 중 작은 일시 오차는 EKF2 필터 lag → 임계가 그만큼만 허용.
+
+## 시나리오 (M2 반응 — `safety_node.py`, ⚠️ KILL 권한)
+
+`monitor_node`(observe-only)와 **분리**. 무장(armed) 상태에서만 개입(`require_armed`). 50Hz event-driven.
+
+- **S1 VRPN fault** — `vrpn/stream` 또는 `vrpn/consistency`가 ERROR → `action`(kill|land).
+- **S2 geofence breach** — `local_position`이 `box` 밖 → kill.
+- **S3 RC override** — OFFBOARD 중 RC 스틱 편향 → Position mode(POSCTL). OFFBOARD 복귀 시 재무장.
+
+⚠️ `kill` = force-disarm = 모터정지 = 낙하. 고도 있으면 파괴적 → **S1은 `action: land` 권장**.
+S3는 firmware `COM_RC_OVERRIDE`가 더 robust (companion S3는 백업).
+
+```bash
+roslaunch flight_safety safety.launch    # KILL 권한 — 의도적으로 실행할 때만
+```

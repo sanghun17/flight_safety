@@ -1,0 +1,6 @@
+<launch>
+  <arg name="config" default="$(find flight_safety)/config/monitors.yaml"/>
+  <node pkg="flight_safety" type="monitor_node.py" name="flight_safety_monitor" output="screen">
+    <rosparam command="load" file="$(arg config)"/>
+  </node>
+</launch>

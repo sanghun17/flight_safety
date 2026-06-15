@@ -1,0 +1,55 @@
+update_rate_hz: 2.0    # diagnostics REPORT 주기(사람/rqt용). 감지·트리거 latency와 별개 (README 참고).
+
+subsystems:
+  vrpn:
+    link:                                    # T: 매체 도달성
+      kind: ping
+      host: 192.168.50.13
+      period_s: 1.0
+      timeout_s: 1.0
+      warn_ms: 50.0
+      error_ms: 200.0
+
+    stream:                                  # S: 토픽 데이터 품질
+      kind: topic
+      topic: /vrpn_client_node/pure/pose
+      msg_type: geometry_msgs/PoseStamped    # freeze/jump가 위치를 읽어야 해서 필요
+      checks: [dropout, rate, freeze, jump]
+      dropout_timeout_s: 0.1                  # 마지막 메시지 후 이만큼 없으면 DROPOUT (100Hz면 10프레임)
+      min_rate_hz: 50.0                       # 평균 Hz가 이 아래면 low-rate WARN
+      freeze_window_s: 0.5                    # 값이 이 시간 동안 안 변하면 FROZEN  (시간 문턱)
+      freeze_eps_m: 1.0e-6                    # 이보다 작게 움직이면 "안 변함"으로 간주 (공간 데드밴드)
+      jump_max_step_m: 0.3                    # 연속 두 샘플 위치가 이보다 멀면 JUMP (텔레포트/마커 스왑)
+
+    consistency:                             # E: 융합 추정과의 일치
+      kind: consistency
+      topic_a: /vrpn_client_node/pure/pose
+      topic_b: /mavros/local_position/pose
+      sync_slop_s: 0.05
+      pair_timeout_s: 0.5
+      error_warn_m: 0.10                      # raw 위치차; EKF2 필터 lag만 허용
+      error_error_m: 0.25                     # 같은 프레임/원점 기대 — 실제 오프셋은 fault
+
+# --- M2 반응 tier (safety_node.py, KILL 권한) ---
+scenarios:
+  eval_rate_hz: 50.0
+  require_armed: true        # 무장 상태에서만 개입 (벤치 테스트 보호)
+
+  vrpn_fault:                # S1: VRPN/local_position 깨짐
+    enable: true
+    action: kill             # kill | land   (S1은 land 권장 — 추적만 잃었을 수 있음)
+
+  geofence_breach:           # S2: OptiTrack zone 이탈
+    enable: true
+    action: kill
+    pose_topic: /mavros/local_position/pose
+    box: { x: [-2.0, 2.0], y: [-2.0, 2.0], z: [0.0, 2.5] }   # m — 실제 zone에 맞게 조정
+
+  rc_override:               # S3: OFFBOARD 중 RC 입력 -> Position mode
+    enable: true
+    rc_topic: /mavros/rc/in
+    mode: POSCTL
+    channels: [0, 1, 3]      # roll/pitch/yaw (TX 매핑에 맞게)
+    center_us: 1500
+    range_us: 500
+    deflection: 0.25         # 중심에서 25% 이상 벗어나면 조작으로 간주

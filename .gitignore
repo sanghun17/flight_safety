@@ -1,0 +1,7 @@
+__pycache__/
+*.py[cod]
+*.egg-info/
+build/
+devel/
+.catkin_tools/
+*.swp
