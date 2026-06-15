@@ -1,123 +1,119 @@
 #!/usr/bin/env python
-"""M2 reaction tier: event-driven supervisor with KILL authority.
+"""M2 reaction tier — supervisor + control MUX. Has KILL authority; acts only while armed
+(require_armed). Run separately from monitor_node (observe-only).
 
-Separate from monitor_node.py (observe-only) on purpose — only run this when you want
-active intervention, not during bench tests. Acts only while armed (require_armed).
+Flow each cycle (react_rate_hz):
+  1. evaluate fault rules -> candidate responses (monitor ERROR -> mapped response)
+  2. geofence OUTSIDE -> kill candidate
+  3. pick highest-severity candidate
+  4. terminal (kill) -> disarm; else hand the response to the control MUX
 """
+import math
+
 import rospy
-from diagnostic_msgs.msg import DiagnosticStatus
 from geometry_msgs.msg import PoseStamped
-from mavros_msgs.msg import State, RCIn
+from mavros_msgs.msg import State
+from diagnostic_msgs.msg import DiagnosticStatus
 
 from flight_safety.checks import TopicMonitor
 from flight_safety.consistency import PairConsistencyMonitor
 from flight_safety.actions import MavrosActions
+from flight_safety.responses import build_responses
+from flight_safety.geofence import Geofence, OUTSIDE
+from flight_safety.control_mux import ControlMux
 
 ERROR = DiagnosticStatus.ERROR
 
 
-class SafetySupervisor(object):
+class VehicleState(object):
     def __init__(self):
-        vrpn = rospy.get_param("~subsystems", {}).get("vrpn", {})
-        self.stream = TopicMonitor("vrpn/stream", vrpn["stream"]) if "stream" in vrpn else None
-        self.consistency = (PairConsistencyMonitor("vrpn/consistency", vrpn["consistency"])
-                            if "consistency" in vrpn else None)
-
-        sc = rospy.get_param("~scenarios", {})
-        self.require_armed = bool(sc.get("require_armed", True))
-        self.s1 = sc.get("vrpn_fault", {})
-        self.s2 = sc.get("geofence_breach", {})
-        self.s3 = sc.get("rc_override", {})
-
-        self.actions = MavrosActions()
         self.armed = False
         self.mode = ""
         self.position = None
-        self.rc = []
-        self.fired = set()
+        self.yaw = 0.0
+
+
+def build_monitors(subsystems):
+    mons = {}
+    for sub, layers in subsystems.items():
+        for layer, cfg in layers.items():
+            name = "%s/%s" % (sub, layer)
+            if cfg.get("kind") == "consistency":
+                mons[name] = PairConsistencyMonitor(name, cfg)
+            elif cfg.get("kind", "topic") == "topic":
+                mons[name] = TopicMonitor(name, cfg)
+    return mons
+
+
+class Supervisor(object):
+    def __init__(self):
+        self.monitors = build_monitors(rospy.get_param("~subsystems", {}))
+        self.responses = build_responses(rospy.get_param("~responses", {}))
+        self.rules = rospy.get_param("~rules", [])
+        self.require_armed = bool(rospy.get_param("~require_armed", True))
+
+        self.actions = MavrosActions()
+        self.geofence = Geofence(rospy.get_param("~geofence"))
+        self.mux = ControlMux(rospy.get_param("~control_mux"), self.actions, self.geofence)
+
+        self.state = VehicleState()
+        self.killed = False
 
         rospy.Subscriber("/mavros/state", State, self._on_state, queue_size=5)
-        if self.s2.get("enable"):
-            rospy.Subscriber(self.s2["pose_topic"], PoseStamped, self._on_pose, queue_size=5)
-        if self.s3.get("enable"):
-            rospy.Subscriber(self.s3.get("rc_topic", "/mavros/rc/in"), RCIn, self._on_rc, queue_size=5)
+        rospy.Subscriber("/mavros/local_position/pose", PoseStamped, self._on_pose, queue_size=5)
 
-        hz = float(sc.get("eval_rate_hz", 50.0))
+        hz = float(rospy.get_param("~react_rate_hz", 50.0))
         rospy.Timer(rospy.Duration(1.0 / hz), self._tick)
-        rospy.logwarn("[safety] supervisor up (eval %.0f Hz, require_armed=%s) -- KILL authority",
+        rospy.logwarn("[safety] supervisor up @ %.0fHz (require_armed=%s) -- KILL authority",
                       hz, self.require_armed)
 
     def _on_state(self, m):
-        self.armed, self.mode = m.armed, m.mode
+        self.state.armed, self.state.mode = m.armed, m.mode
 
     def _on_pose(self, m):
-        self.position = (m.pose.position.x, m.pose.position.y, m.pose.position.z)
+        self.state.position = (m.pose.position.x, m.pose.position.y, m.pose.position.z)
+        q = m.pose.orientation
+        self.state.yaw = math.atan2(2.0 * (q.w * q.z + q.x * q.y),
+                                    1.0 - 2.0 * (q.y * q.y + q.z * q.z))
 
-    def _on_rc(self, m):
-        self.rc = list(m.channels)
+    def _select_response(self, now):
+        best = None
+        for rule in self.rules:
+            mon = self.monitors.get(rule.get("monitor"))
+            if mon is not None and mon.evaluate(now)[0] >= ERROR:
+                r = self.responses.get(rule.get("response"))
+                if r is not None and (best is None or r.severity > best.severity):
+                    best = r
+        if self.geofence.status(now) == OUTSIDE:
+            k = self.responses.get("kill")
+            if k is not None and (best is None or k.severity > best.severity):
+                best = k
+        return best
 
     def _tick(self, _evt):
+        if self.killed:
+            return
         now = rospy.Time.now()
-        active = self.armed or not self.require_armed
+        if self.require_armed and not self.state.armed:
+            return
 
-        # S1: VRPN stream or VRPN<->local_position broken -> kill/land
-        if active and self.s1.get("enable") and "s1" not in self.fired:
-            bad, reason = False, ""
-            if self.stream is not None:
-                lvl, m = self.stream.evaluate(now)
-                if lvl >= ERROR:
-                    bad, reason = True, m
-            if not bad and self.consistency is not None:
-                lvl, m = self.consistency.evaluate(now)
-                if lvl >= ERROR:
-                    bad, reason = True, m
-            if bad:
-                self._fire("s1", self.s1.get("action", "kill"), "VRPN fault: " + reason)
+        resp = self._select_response(now)
+        for r in self.responses.values():       # re-arm latched responses (e.g. hold capture)
+            if r is not resp:
+                r.reset()
 
-        # S2: outside OptiTrack zone -> kill
-        if active and self.s2.get("enable") and "s2" not in self.fired and self.position is not None:
-            if self._outside_box(self.position, self.s2["box"]):
-                self._fire("s2", self.s2.get("action", "kill"),
-                           "geofence breach @ (%.2f, %.2f, %.2f)" % self.position)
+        if resp is not None and getattr(resp, "terminal", False):
+            self.killed = True
+            rospy.logfatal("[safety] terminal response -> KILL")
+            resp.execute(self.actions)
+            return
 
-        # S3: RC input during OFFBOARD -> hand to pilot (Position mode). Re-arms when back in OFFBOARD.
-        if active and self.s3.get("enable") and self.mode == "OFFBOARD" and self._rc_deflected():
-            if "s3" not in self.fired:
-                self.actions.set_mode(self.s3.get("mode", "POSCTL"))
-                self.fired.add("s3")
-                rospy.logwarn("[safety] S3 RC override -> %s", self.s3.get("mode", "POSCTL"))
-        elif self.mode != "OFFBOARD":
-            self.fired.discard("s3")
-
-    def _fire(self, key, action, reason):
-        self.fired.add(key)
-        rospy.logfatal("[safety] %s -> %s (%s)", key, action.upper(), reason)
-        if action == "kill":
-            self.actions.kill()
-        elif action == "land":
-            self.actions.set_mode("AUTO.LAND")
-
-    @staticmethod
-    def _outside_box(p, box):
-        return not (box["x"][0] <= p[0] <= box["x"][1] and
-                    box["y"][0] <= p[1] <= box["y"][1] and
-                    box["z"][0] <= p[2] <= box["z"][1])
-
-    def _rc_deflected(self):
-        if not self.rc:
-            return False
-        center = float(self.s3.get("center_us", 1500))
-        rng = float(self.s3.get("range_us", 500))
-        thr = float(self.s3.get("deflection", 0.25))
-        for i in self.s3.get("channels", [0, 1, 3]):
-            if i < len(self.rc) and abs(self.rc[i] - center) / rng > thr:
-                return True
-        return False
+        self.mux.step(now, self.state, resp)
 
 
 def main():
     rospy.init_node("flight_safety_supervisor")
-    SafetySupervisor()
+    Supervisor()
     rospy.spin()
 
 

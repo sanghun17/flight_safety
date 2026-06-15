@@ -44,6 +44,9 @@ class TopicMonitor(object):
         self.freeze_window = float(cfg.get("freeze_window_s", 0.3))
         self.freeze_eps = float(cfg.get("freeze_eps_m", 1e-6))
         self.jump_max_step = float(cfg.get("jump_max_step_m", 0.3))
+        # low rate is WARN by default; set rate_level: error to make it a hard fault (e.g. VRPN)
+        self.rate_level = (DiagnosticStatus.ERROR if cfg.get("rate_level") == "error"
+                           else DiagnosticStatus.WARN)
 
         self.last_rx = None
         self.last_pos = None
@@ -114,7 +117,7 @@ class TopicMonitor(object):
         if "jump" in self.checks and jump_recent:
             return DiagnosticStatus.WARN, "JUMP: %.2f m step" % self.last_jump_step
         if "rate" in self.checks and self.min_rate > 0 and rate < self.min_rate:
-            return DiagnosticStatus.WARN, "low rate %.1f Hz (< %.0f)" % (rate, self.min_rate)
+            return self.rate_level, "low rate %.1f Hz (< %.0f)" % (rate, self.min_rate)
         return DiagnosticStatus.OK, "ok (%.1f Hz)" % rate
 
     def run_diag(self, stat):
