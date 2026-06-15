@@ -5,17 +5,12 @@ require_armed: true     # 무장 상태에서만 개입
 # ── 감지: subsystem -> layer -> monitor ───────────────────────────────
 subsystems:
   vrpn:
-    stream:                                  # "안나옴" = dropout/freeze/rate
+    heartbeat:                               # 토픽 살아있나(node 死)만. rate/freeze 상세는 vrpn 내부 진단(in-node).
       kind: topic
       topic: /vrpn_client_node/pure/pose
-      msg_type: geometry_msgs/PoseStamped
-      checks: [dropout, rate, freeze]
-      dropout_timeout_s: 0.1
-      min_rate_hz: 50.0
-      rate_level: error                      # 낮은 rate도 hard fault (-> land)
-      freeze_window_s: 0.5
-      freeze_eps_m: 1.0e-6
-    consistency:                             # VRPN <-> local_position 불일치
+      checks: [dropout]                      # AnyMsg liveness — 무발행 = 死
+      dropout_timeout_s: 0.3                 # 이 시간 무발행 -> 토픽/노드 死 -> land (tunable)
+    consistency:                             # VRPN <-> local_position 불일치 (cross-node, 외부 전용)
       kind: consistency
       topic_a: /vrpn_client_node/pure/pose
       topic_b: /mavros/local_position/pose
@@ -30,8 +25,8 @@ subsystems:
 
 # ── fault(monitor ERROR) -> response 매핑 (추가/수정은 여기 한 줄) ──────
 rules:
-  - { monitor: vrpn/stream,      response: land }   # VRPN 안나옴
-  - { monitor: vrpn/consistency, response: land }   # VRPN-local_position 불일치
+  - { monitor: vrpn/heartbeat,   response: land }   # VRPN 토픽/노드 死
+  - { monitor: vrpn/consistency, response: land }   # VRPN-local_position 불일치 (움직이는 중 freeze도 여기서 잡힘)
 
 # ── 응답 3종 (severity: hold<land<kill) ───────────────────────────────
 responses:
