@@ -11,7 +11,10 @@
   <exec_depend>rospy</exec_depend>
   <exec_depend>geometry_msgs</exec_depend>
   <exec_depend>message_filters</exec_depend>
-  <exec_depend>diagnostic_updater</exec_depend>
   <exec_depend>diagnostic_msgs</exec_depend>
   <exec_depend>mavros_msgs</exec_depend>
+
+  <!-- C++ header export (stream_diagnostic.h): build+export deps, not just exec -->
+  <depend>diagnostic_updater</depend>
+  <depend>roscpp</depend>
 </package>
