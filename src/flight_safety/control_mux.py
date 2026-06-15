@@ -43,24 +43,20 @@ class ControlMux(object):
                 return True
         return False
 
-    def step(self, now, state, response):
-        # 3. Manual (highest): RC moved while OFFBOARD -> switch to manual, stop publishing.
-        if state.mode == "OFFBOARD" and self.manual_active():
-            if self._last_manual is None or (now - self._last_manual).to_sec() > 1.0:
-                self.actions.set_mode(self.manual_mode)
-                self._last_manual = now
-            return
-        if state.mode != "OFFBOARD":
-            return   # pilot/other mode owns the vehicle; MUX stays out
+    def to_manual(self, now):
+        """Priority 3: hand control to the pilot (throttled switch to manual mode)."""
+        if self._last_manual is None or (now - self._last_manual).to_sec() > 1.0:
+            self.actions.set_mode(self.manual_mode)
+            self._last_manual = now
 
-        # 2. Response offboard, else 1. Normal offboard.
+    def publish(self, now, state, response):
+        """Priority 2/1: response offboard setpoint else normal, geofence-clamped. Caller
+        guarantees mode == OFFBOARD and no higher priority (kill/manual) is active."""
         sp = response.setpoint(state) if response is not None else None
         if sp is None:
             sp = self.normal
         if sp is None:
             return
-
-        # single geofence clamp at the output.
         if self.geofence.status(now) == gf.APPROACHING:
             sp = self.geofence.clamp(sp)
         sp.header.stamp = now

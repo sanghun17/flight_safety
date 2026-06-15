@@ -102,13 +102,17 @@ class Supervisor(object):
             if r is not resp:
                 r.reset()
 
-        if resp is not None and getattr(resp, "terminal", False):
+        # control priority ladder: 4 KILL > 3 Manual > 2 Response > 1 Normal
+        if resp is not None and getattr(resp, "terminal", False):          # 4 KILL (overrides pilot)
             self.killed = True
-            rospy.logfatal("[safety] terminal response -> KILL")
+            rospy.logfatal("[safety] KILL")
             resp.execute(self.actions)
             return
-
-        self.mux.step(now, self.state, resp)
+        if self.state.mode == "OFFBOARD" and self.mux.manual_active():     # 3 Manual (RC override)
+            self.mux.to_manual(now)
+            return
+        if self.state.mode == "OFFBOARD":                                  # 2 Response / 1 Normal
+            self.mux.publish(now, self.state, resp)
 
 
 def main():
