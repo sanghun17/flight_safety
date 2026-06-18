@@ -1,7 +1,7 @@
 <launch>
-  <!-- M2 reaction tier — has KILL authority. Run only for active intervention. -->
-  <arg name="config" default="$(find flight_safety)/config/monitors.yaml"/>
-  <node pkg="flight_safety" type="safety_node.py" name="flight_safety_supervisor" output="screen">
-    <rosparam command="load" file="$(arg config)"/>
-  </node>
+  <!-- Full standalone bringup = observe (L1+L2) + response (L3, KILL AUTHORITY).
+       Use ONLY for one-shot full bringup. If observe is already up (run_monitor.sh),
+       layer just L3 with response.launch instead to avoid duplicate L1/L2 nodes. -->
+  <include file="$(find flight_safety)/launch/observe.launch"/>
+  <include file="$(find flight_safety)/launch/response.launch"/>
 </launch>

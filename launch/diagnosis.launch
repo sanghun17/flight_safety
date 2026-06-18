@@ -1,0 +1,7 @@
+<launch>
+  <!-- L1 diagnosis: geofence + consistency reporters -> /diagnostics (observe-only). -->
+  <arg name="config" default="$(find flight_safety)/config/diagnosis.yaml"/>
+  <node pkg="flight_safety" type="diagnosis_node.py" name="flight_safety_diagnosis" output="screen">
+    <rosparam command="load" file="$(arg config)"/>
+  </node>
+</launch>

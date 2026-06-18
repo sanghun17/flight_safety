@@ -2,17 +2,21 @@
 <package format="2">
   <name>flight_safety</name>
   <version>0.0.1</version>
-  <description>Flight-safety monitoring: generic topic/ping checks + VRPN vs local_position consistency (observe-only).</description>
+  <description>Layered flight safety: L1 per-subsystem diagnosis (OK/WARN/ERROR -> /diagnostics, incl. geofence) + L2 monitor (worst fault) + L3 response/mux (manual + severity -> normal/land/kill). Builds in the risk-aware workspace for mavros_msgs.</description>
   <maintainer email="rhanehdfurrl@gmail.com">hmcl</maintainer>
   <license>BSD-3-Clause</license>
 
   <buildtool_depend>catkin</buildtool_depend>
+
+  <build_depend>message_generation</build_depend>
+  <exec_depend>message_runtime</exec_depend>
 
   <exec_depend>rospy</exec_depend>
   <exec_depend>geometry_msgs</exec_depend>
   <exec_depend>message_filters</exec_depend>
   <exec_depend>diagnostic_msgs</exec_depend>
   <exec_depend>mavros_msgs</exec_depend>
+  <depend>std_msgs</depend>
 
   <!-- C++ header export (stream_diagnostic.h): build+export deps, not just exec -->
   <depend>diagnostic_updater</depend>

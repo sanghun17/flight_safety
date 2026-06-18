@@ -1,0 +1,23 @@
+<launch>
+  <!-- Estimator MUX (peer of the L3 response mux): select ONE odometry source -> /mavros/vision_pose/pose
+       (PX4 EKF2 vision input). VRPN publishes /vision_pose/mocap, FAST-LIVO publishes /vision_pose/vio;
+       topic_tools/mux passes only the selected one so EKF2 never sees two publishers (which would make it
+       jitter between them). Response mux = control OUTPUT; this = estimator INPUT.
+
+       STATIC select at launch:   source:=mocap | vio   (default mocap = VRPN, the absolute reference).
+       Live switch (sources are origin-aligned, so no EKF2 jump):
+         rosservice call /vision_pose_mux/select "topic: '/vision_pose/vio'"
+       Current input echoes on /vision_pose_mux/selected.
+
+       NOTE: independent of /system/localization (that selects the PLANNER odom; this selects the EKF2
+       vision feed; in 'real', planner=vio while EKF2 may still run on mocap). -->
+  <arg name="source"      default="mocap"/>             <!-- mocap | vio -->
+  <arg name="mocap_topic" default="/vision_pose/mocap"/>
+  <arg name="vio_topic"   default="/vision_pose/vio"/>
+  <node pkg="topic_tools" type="mux" name="vision_pose_mux" output="screen"
+        launch-prefix="taskset -c $(optenv CPUS_POOL 4-11)"
+        args="/mavros/vision_pose/pose $(arg mocap_topic) $(arg vio_topic)">
+    <param name="initial_topic" value="$(arg vio_topic)"   if="$(eval arg('source') == 'vio')"/>
+    <param name="initial_topic" value="$(arg mocap_topic)" unless="$(eval arg('source') == 'vio')"/>
+  </node>
+</launch>

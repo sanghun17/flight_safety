@@ -1,18 +1,32 @@
 cmake_minimum_required(VERSION 3.0.2)
 project(flight_safety)
 
-find_package(catkin REQUIRED COMPONENTS diagnostic_updater roscpp)
+find_package(catkin REQUIRED COMPONENTS
+  diagnostic_updater
+  roscpp
+  std_msgs
+  message_generation
+)
 
 catkin_python_setup()
 
-# header-only: exports include/ so C++ nodes (vrpn_client_ros, fast-livo, ...) can
-# #include <flight_safety/stream_diagnostic.h>. CATKIN_DEPENDS re-exports its deps.
+add_message_files(FILES
+  Fault.msg
+  FlightState.msg
+)
+generate_messages(DEPENDENCIES std_msgs)
+
+# header-only C++ (stream_diagnostic.h) exported via include/ for vrpn_client_ros / fast-livo;
+# Python nodes + generated msgs are the rest. CATKIN_DEPENDS re-exports deps.
 catkin_package(
   INCLUDE_DIRS include
-  CATKIN_DEPENDS diagnostic_updater roscpp
+  CATKIN_DEPENDS diagnostic_updater roscpp std_msgs message_runtime
 )
 
-catkin_install_python(PROGRAMS scripts/monitor_node.py scripts/safety_node.py
+catkin_install_python(PROGRAMS
+  scripts/diagnosis_node.py
+  scripts/monitor_node.py
+  scripts/response_node.py
   DESTINATION ${CATKIN_PACKAGE_BIN_DESTINATION})
 
 install(DIRECTORY include/${PROJECT_NAME}/

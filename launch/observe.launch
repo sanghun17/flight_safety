@@ -1,0 +1,6 @@
+<launch>
+  <!-- Observe stack = L1 diagnosis + L2 monitor. No actuation; safe always-on.
+       (rqt_runtime_monitor shows the L1 /diagnostics; /flight_safety/fault is the L2 verdict.) -->
+  <include file="$(find flight_safety)/launch/diagnosis.launch"/>
+  <include file="$(find flight_safety)/launch/monitor.launch"/>
+</launch>

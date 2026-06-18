@@ -1,0 +1,18 @@
+# L3 response/mux (flight_safety_response): manual + worst level -> {manual, normal, land, kill}.
+require_armed: true                          # actuation only while armed (state still published)
+react_rate_hz: 50.0
+estimator: VRPN                              # localization feeding EKF2 vision_pose (display only)
+
+setpoint_out: /mavros/setpoint_raw/local
+normal_in: /flight_safety/normal_setpoint    # planner/control_bridge publishes here (NORMAL passthrough)
+
+land:
+  descend_mps: 0.4                           # WARN -> descend in place
+
+rc:                                          # manual takeover (Manual lane, overrides all)
+  topic: /mavros/rc/in
+  channels: [0, 1, 3]                        # roll/pitch/yaw (TX 매핑)
+  center_us: 1500
+  range_us: 500
+  deflection: 0.25                           # |stick-center|/range 초과 -> manual
+  manual_mode: POSCTL

@@ -1,0 +1,17 @@
+# L1 diagnosis (flight_safety_diagnosis): our derived per-subsystem reporters -> /diagnostics.
+# vrpn rate/freeze thresholds live in optitrack.launch (in-node); mavros self-reports.
+rate_hz: 2.0
+
+geofence:
+  source: /vrpn_client_node/pure/pose
+  box: { x: [-2.0, 2.0], y: [-2.0, 2.0], z: [0.0, 2.5] }   # m — 실제 zone에 맞게
+  margin_m: 0.3            # 경계 이내 -> APPROACHING (WARN -> land)
+  pose_timeout_s: 0.2      # source stale -> UNKNOWN(WARN)
+
+consistency:
+  topic_a: /vrpn_client_node/pure/pose
+  topic_b: /mavros/local_position/pose
+  sync_slop_s: 0.05
+  pair_timeout_s: 0.5
+  warn_m: 0.10             # WARN -> land
+  error_m: 0.25            # ERROR -> kill

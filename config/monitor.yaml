@@ -1,0 +1,13 @@
+# L2 monitor (flight_safety_monitor): which /diagnostics sources to watch + death timeout.
+# Worst severity across these -> /flight_safety/fault. A source silent past stale_s = DEAD(ERROR).
+publish_rate_hz: 10.0
+
+# stale_s = "silent this long -> DEAD(ERROR)". /diagnostics publishers tick ~1Hz
+# (diagnostic_updater default period), so with timer beating the gap can reach ~2s.
+# Keep stale_s >= ~3x the publish interval (>=3s) or a HEALTHY node false-trips DEAD.
+# (Faster death detection needs a faster diag publish -- see notes; then drop these.)
+sources:
+  - { match: "pure stream", stale_s: 3.0 }   # vrpn in-node (rate/freeze/no-data); name = "vrpn_client_node: pure stream"
+  - { match: "geofence",    stale_s: 3.0 }   # L1 diagnosis
+  - { match: "consistency", stale_s: 3.0 }   # L1 diagnosis
+  # - { match: "mavros: System", stale_s: 3.0 }   # enable to fold mavros System health in (kill/GPS already sane)
