@@ -1,7 +1,6 @@
 <launch>
-  <!-- Full standalone bringup = observe (L1+L2) + response (L3, KILL AUTHORITY).
-       Use ONLY for one-shot full bringup. If observe is already up (run_monitor.sh),
-       layer just L3 with response.launch instead to avoid duplicate L1/L2 nodes. -->
+  <!-- Whole flight-safety module: observe (L1+L2) + response (L3, KILL AUTHORITY) + estimator mux. -->
   <include file="$(find flight_safety)/launch/observe.launch"/>
   <include file="$(find flight_safety)/launch/response.launch"/>
+  <include file="$(find flight_safety)/launch/vision_pose_mux.launch"/>
 </launch>
