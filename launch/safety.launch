@@ -3,4 +3,10 @@
   <include file="$(find flight_safety)/launch/observe.launch"/>
   <include file="$(find flight_safety)/launch/response.launch"/>
   <include file="$(find flight_safety)/launch/vision_pose_mux.launch"/>
+  <!-- arm-triggered flight-safety recorder: ARM -> log fault/state, DISARM -> stop (record_on_arm:=false to disable) -->
+  <arg name="record_on_arm" default="true"/>
+  <include file="$(find flight_safety)/launch/recorder.launch" if="$(arg record_on_arm)"/>
+  <!-- IMU touchdown->KILL during LAND (touchdown_kill:=false to disable) -->
+  <arg name="touchdown_kill" default="true"/>
+  <include file="$(find flight_safety)/launch/touchdown.launch" if="$(arg touchdown_kill)"/>
 </launch>

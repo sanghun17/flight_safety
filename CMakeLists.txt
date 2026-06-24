@@ -27,6 +27,8 @@ catkin_install_python(PROGRAMS
   scripts/diagnosis_node.py
   scripts/monitor_node.py
   scripts/response_node.py
+  scripts/recorder_node.py
+  scripts/touchdown_node.py
   DESTINATION ${CATKIN_PACKAGE_BIN_DESTINATION})
 
 install(DIRECTORY include/${PROJECT_NAME}/
