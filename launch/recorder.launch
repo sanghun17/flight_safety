@@ -1,0 +1,7 @@
+<launch>
+  <!-- Arm-triggered rosbag recorder: ARM -> record the configured topics, DISARM -> stop+finalize. -->
+  <arg name="config" default="$(find flight_safety)/config/recorder.yaml"/>
+  <node pkg="flight_safety" type="recorder_node.py" name="flight_safety_recorder" output="screen">
+    <rosparam command="load" file="$(arg config)"/>
+  </node>
+</launch>

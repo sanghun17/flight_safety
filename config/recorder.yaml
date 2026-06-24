@@ -1,0 +1,11 @@
+# Arm-triggered flight-safety recorder: ARM -> record, DISARM -> stop+finalize (one bag per flight).
+# Records ONLY the safety verdicts + the minimal context to read them. Tiny; always-on.
+bag_dir: /work/flight_logs
+prefix: safety
+lz4: true
+stop_settle: 10.0
+topics:
+  - /flight_safety/fault     # L2 worst-severity verdict
+  - /flight_safety/state     # L3 unified flight-safety state (dashboard)
+  - /diagnostics             # L1 raw per-subsystem health (what the monitor consumes)
+  - /mavros/state            # arming/mode context to read the fault timeline
