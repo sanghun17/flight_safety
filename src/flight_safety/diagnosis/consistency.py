@@ -34,13 +34,14 @@ class ConsistencyDiag(object):
         self.last_pair = rospy.Time.now()
 
     def run_diag(self, stat):
+        # No input -> ERROR: can't verify localization integrity (no vrpn or no EKF2 pose to compare).
         now = rospy.Time.now()
         if self.last_pair is None:
-            stat.summary(DiagnosticStatus.WARN, "no synced pairs")
+            stat.summary(DiagnosticStatus.ERROR, "no synced pairs")
             return
         age = (now - self.last_pair).to_sec()
         if age > self.pair_timeout:
-            stat.summary(DiagnosticStatus.WARN, "stale: no pair %.2fs" % age)
+            stat.summary(DiagnosticStatus.ERROR, "stale: no pair %.1fs" % age)
             return
         stat.add("err_m", "%.3f" % self.err)
         if self.err > self.error:

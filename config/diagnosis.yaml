@@ -1,12 +1,16 @@
-# L1 diagnosis (flight_safety_diagnosis): our derived per-subsystem reporters -> /diagnostics.
-# vrpn rate/freeze thresholds live in optitrack.launch (in-node); mavros self-reports.
+# L1 diagnosis (flight_safety_diagnosis): per-subsystem reporters -> /diagnostics.
+# geofence/consistency judge by their inputs; NO input -> ERROR (can't verify -> kill).
+# Sources that don't self-report are watched under `liveness:`. vrpn rate/freeze live in
+# optitrack.launch; mavros self-reports its own plugins.
 rate_hz: 2.0
 
 geofence:
-  source: /vrpn_client_node/pure/pose
-  box: { x: [-2.0, 2.0], y: [-2.0, 2.0], z: [0.0, 2.5] }   # m — 실제 zone에 맞게
-  margin_m: 0.3            # 경계 이내 -> APPROACHING (WARN -> land)
-  pose_timeout_s: 0.2      # source stale -> UNKNOWN(WARN)
+  source: /vrpn_client_node/pure/pose                        # OptiTrack pose (NOT mavros)
+  box: { x: [-2.5, 2.5], y: [-2.5, 2.5], z: [-0.5, 4.0] }     # m (boundary)
+  margin_m: 0.3            # within this of a wall -> APPROACHING (WARN -> land)
+  pose_timeout_s: 0.2      # no pose within this -> ERROR (lost localization -> kill)
+  # rviz marker /flight_safety/geofence: colors (green / yellow-red blink 3Hz / red / gray) are
+  # fixed in code; marker frame follows the vrpn pose header (set rviz Fixed Frame to it, e.g. odom).
 
 consistency:
   topic_a: /vrpn_client_node/pure/pose
@@ -14,4 +18,11 @@ consistency:
   sync_slop_s: 0.05
   pair_timeout_s: 0.5
   warn_m: 0.10             # WARN -> land
-  error_m: 0.25            # ERROR -> kill
+  error_m: 0.25            # ERROR -> kill   (no pair / stale also -> ERROR: can't verify)
+
+# Source liveness for inputs that do NOT self-report to /diagnostics -- names WHICH source died,
+# independent of the cross-check. (vrpn pose is covered by its in-node 'pure stream'.)
+liveness:
+  local_position:
+    topic: /mavros/local_position/pose
+    stale_s: 0.5           # 30Hz topic; seen-then-silent > this -> ERROR(DEAD) -> kill
