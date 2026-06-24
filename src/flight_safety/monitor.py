@@ -10,11 +10,18 @@ OK, WARN, ERROR = DiagnosticStatus.OK, DiagnosticStatus.WARN, DiagnosticStatus.E
 
 
 class Monitor(object):
-    def __init__(self, sources):
+    def __init__(self, sources, inject_timeout_s=1.0):
         # sources: [{match: <substring of /diagnostics name>, stale_s: <death timeout>}]
         self.sources = [(s["match"], float(s.get("stale_s", 2.0))) for s in sources]
         self.last = {}   # match -> (level, message, stamp)
+        # Optional fault INJECTION (test / operational "command emergency land/kill"): a recent
+        # WARN/ERROR on /flight_safety/inject_fault folds into worst() like any other source.
+        # Neutral by default -- no message, or a stale/OK one, contributes nothing, so normal
+        # operation is unaffected. Downstream LAND/KILL is still gated (armed + OFFBOARD) in L3.
+        self.inject = None   # (level, message, stamp)
+        self.inject_timeout = float(inject_timeout_s)
         rospy.Subscriber("/diagnostics", DiagnosticArray, self._on_diag, queue_size=20)
+        rospy.Subscriber("/flight_safety/inject_fault", DiagnosticStatus, self._on_inject, queue_size=1)
 
     def _on_diag(self, arr):
         now = rospy.Time.now()
@@ -22,6 +29,9 @@ class Monitor(object):
             for match, _ in self.sources:
                 if match in st.name:
                     self.last[match] = (st.level, st.message, now)
+
+    def _on_inject(self, st):
+        self.inject = (st.level, st.message or "injected fault", rospy.Time.now())
 
     def worst(self, now):
         """(level, names, messages) over watched sources. Never-seen -> WARN; gone stale
@@ -38,6 +48,10 @@ class Monitor(object):
                 lv, msg = rec[0], rec[1]
             per.append((match, lv, msg))
             level = max(level, lv)
+        if (self.inject is not None and self.inject[0] > OK and
+                (now - self.inject[2]).to_sec() <= self.inject_timeout):
+            per.append(("inject", self.inject[0], self.inject[1]))
+            level = max(level, self.inject[0])
         names = [m for m, lv, _ in per if lv == level and level > OK]
         messages = [msg for _, lv, msg in per if lv == level and level > OK]
         return level, names, messages

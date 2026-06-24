@@ -2,12 +2,20 @@
 # Worst severity across these -> /flight_safety/fault. A source silent past stale_s = DEAD(ERROR).
 publish_rate_hz: 10.0
 
+# Optional fault injection on /flight_safety/inject_fault (diagnostic_msgs/DiagnosticStatus):
+# a WARN/ERROR fresher than this folds into the worst-severity verdict (test/operational
+# "command emergency land/kill"); stop publishing -> reverts after this timeout. Neutral by default.
+inject_timeout_s: 1.0
+
 # stale_s = "silent this long -> DEAD(ERROR)". /diagnostics publishers tick ~1Hz
 # (diagnostic_updater default period), so with timer beating the gap can reach ~2s.
 # Keep stale_s >= ~3x the publish interval (>=3s) or a HEALTHY node false-trips DEAD.
 # (Faster death detection needs a faster diag publish -- see notes; then drop these.)
 sources:
-  - { match: "pure stream", stale_s: 3.0 }   # vrpn in-node (rate/freeze/no-data); name = "vrpn_client_node: pure stream"
-  - { match: "geofence",    stale_s: 3.0 }   # L1 diagnosis
-  - { match: "consistency", stale_s: 3.0 }   # L1 diagnosis
-  # - { match: "mavros: System", stale_s: 3.0 }   # enable to fold mavros System health in (kill/GPS already sane)
+  - { match: "pure stream",    stale_s: 3.0 }   # vrpn in-node (rate/freeze/no-data) = vrpn pose liveness
+  - { match: "local_position", stale_s: 3.0 }   # L1 liveness: mavros local_position (consistency's other input)
+  - { match: "geofence",       stale_s: 3.0 }   # L1 derived: OUTSIDE/APPROACHING (neutral on no pose)
+  - { match: "consistency",    stale_s: 3.0 }   # L1 derived: vrpn-vs-EKF2 mismatch (neutral on no pair)
+  # The pilot KILL SWITCH is NOT watched here: it is read directly off RC ch9 (its own pipeline) in
+  # L3 response and the LED, and wins as its own KILL lane -- a deliberate motor-cut must never route
+  # through this fault path and land. ("mavros: System" reports it as OK, not a fault, by design.)
