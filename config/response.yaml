@@ -4,10 +4,11 @@ react_rate_hz: 50.0
 estimator: VRPN                              # localization feeding EKF2 vision_pose (display only)
 
 setpoint_out: /mavros/setpoint_raw/local
-normal_in: /flight_safety/normal_setpoint    # planner/control_bridge publishes here (NORMAL passthrough)
+normal_in: /local_controller/setpoint_raw/local    # planner/control_bridge publishes here (NORMAL passthrough)
+normal_timeout_s: 0.5                         # drop a stale planner setpoint -> PX4 offboard-loss failsafe
 
 land:
-  descend_mps: 0.4                           # WARN -> descend in place
+  descend_mps: 1.0                           # WARN -> emergency descend in place (vx=vy=yawrate=0, vz=-1 m/s; fast on purpose)
 
 rc:                                          # manual takeover (Manual lane, overrides all)
   topic: /mavros/rc/in
@@ -16,3 +17,7 @@ rc:                                          # manual takeover (Manual lane, ove
   range_us: 500
   deflection: 0.25                           # |stick-center|/range 초과 -> manual
   manual_mode: POSCTL
+  # pilot manual kill switch -> KILL lane (red). Read DIRECTLY off this RC channel (its own pipeline,
+  # NOT the L2 severity path, NOT the mavros diagnostic) so a deliberate motor-cut never lands.
+  kill_channel: 8                            # /mavros/rc/in idx for RC ch9 (RC_MAP_KILL_SW=9)
+  kill_engaged_us: 1500                      # ch above this = kill engaged (measured 2011 on / 988 off)

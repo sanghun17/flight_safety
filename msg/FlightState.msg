@@ -7,6 +7,7 @@ string summary           # one-line dashboard (echo .../state/summary for just t
 # controller
 bool   armed
 string mode              # PX4 nav mode (/mavros/state)
+bool   kill_switch       # pilot RC manual kill switch engaged (mavros: System -> "manual kill switch engaged")
 string control_lane      # MANUAL · NORMAL · LAND · KILL  (active mux lane)
 string active_response   # '' · land · kill
 
