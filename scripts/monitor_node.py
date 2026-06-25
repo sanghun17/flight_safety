@@ -10,7 +10,7 @@ from flight_safety.msg import Fault
 
 def main():
     rospy.init_node("flight_safety_monitor")
-    mon = Monitor(rospy.get_param("~sources", []), rospy.get_param("~inject_timeout_s", 1.0))
+    mon = Monitor(rospy.get_param("~sources", []))
     pub = rospy.Publisher("/flight_safety/fault", Fault, queue_size=1)
     hz = float(rospy.get_param("~publish_rate_hz", 10.0))
 
