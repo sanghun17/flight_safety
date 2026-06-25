@@ -6,8 +6,8 @@ rate_hz: 2.0
 
 geofence:
   source: /vrpn_client_node/pure/pose                        # OptiTrack pose (NOT mavros)
-  box: { x: [-2.5, 2.5], y: [-2.5, 2.5], z: [-0.5, 4.0] }     # m (boundary)
-  margin_m: 0.3            # within this of a wall -> APPROACHING (WARN -> land)
+  box: { x: [-2.0, 2.0], y: [-2.0, 2.0], z: [-0.5, 2.0] }     # m (boundary)
+  margin_m: 0.5            # within this of a wall -> APPROACHING (WARN -> land)
   pose_timeout_s: 0.2      # no pose within this -> ERROR (lost localization -> kill)
   # rviz marker /flight_safety/geofence: colors (green / yellow-red blink 3Hz / red / gray) are
   # fixed in code; marker frame follows the vrpn pose header (set rviz Fixed Frame to it, e.g. odom).
