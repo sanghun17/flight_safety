@@ -1,5 +1,5 @@
-"""IMU touchdown detector -- pure logic, no ROS deps (so the node AND the offline
-bag-replay validator share the exact same code).
+"""IMU touchdown detector -- pure logic, no ROS deps (unit-testable; the L3 response node
+imports it directly).
 
 During an emergency LAND (response descending in place at ~1 m/s, vx=vy=0) the only
 thing that spikes the IMU is hitting the ground. land_drill bags (2026-06-24) show:
@@ -17,7 +17,17 @@ single-axis accel glitch. Burst-tolerant: latch on `confirm` hits within window_
 
 Feed it (t, vert, gyro_mag, in_land); update() returns True ONCE, at first confirmed
 touchdown. Latches until in_land goes false (disarm / lane change).
+
+world_vert() turns one raw IMU sample into that feature.
 """
+
+
+def world_vert(qx, qy, qz, qw, ax, ay, az):
+    """ENU world-up component of body specific-force (ax,ay,az) given body->world quat
+    (qx,qy,qz,qw): the vertical impact, NOT |a| (lateral inflates it), NOT body-z (tips out)."""
+    return (2 * (qx * qz + qw * qy) * ax +
+            2 * (qy * qz - qw * qx) * ay +
+            (1 - 2 * (qx * qx + qy * qy)) * az)
 
 
 class TouchdownDetector(object):

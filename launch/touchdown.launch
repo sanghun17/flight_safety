@@ -1,7 +1,0 @@
-<launch>
-  <!-- IMU touchdown -> KILL during emergency LAND (injects ERROR -> response force-disarms). -->
-  <arg name="config" default="$(find flight_safety)/config/touchdown.yaml"/>
-  <node pkg="flight_safety" type="touchdown_node.py" name="flight_safety_touchdown" output="screen">
-    <rosparam command="load" file="$(arg config)"/>
-  </node>
-</launch>

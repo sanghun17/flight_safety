@@ -10,6 +10,15 @@ normal_timeout_s: 0.5                         # drop a stale planner setpoint ->
 land:
   descend_mps: 1.0                           # WARN -> emergency descend in place (vx=vy=yawrate=0, vz=-1 m/s; fast on purpose)
 
+touchdown:                                   # IMU touchdown DURING LAND -> escalate to KILL (the LAND maneuver's terminator, in-process)
+  enabled: true
+  imu_topic: /mavros/imu/data
+  vert_thresh: 16.0                          # EKF world-up specific force for an impact hit (NOT |a|, NOT body-z)
+  gyro_thresh: 0.3                           # AND |gyro| (rad/s) >= this -- a real impact rocks the frame
+  min_land_s: 0.3                            # ignore this long after LAND begins (entry transient)
+  confirm: 2                                 # hits within window_s to latch (burst-tolerant, rejects a glitch)
+  window_s: 0.25                             # tuned on real landings: descent vert<=~13, impact vert 20..50
+
 rc:                                          # manual takeover (Manual lane, overrides all)
   topic: /mavros/rc/in
   channels: [0, 1, 3]                        # roll/pitch/yaw (TX 매핑)

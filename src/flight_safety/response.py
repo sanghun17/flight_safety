@@ -12,12 +12,21 @@ separate pipeline kept OUT of the L2 severity path AND off the mavros diagnostic
 mistaken for a WARN-that-lands. Severity IS the policy for the health monitors; L1 decides WARN vs ERROR.
 LAND/KILL actuation is gated by require_armed; the NORMAL setpoint stream is forwarded even when
 disarmed (so OFFBOARD entry sees a live stream); state is published every tick for visibility.
+
+During LAND, a confirmed IMU touchdown (flight_safety.touchdown: world-vertical specific-force
+spike + airframe roll) escalates the lane to KILL. Touchdown is the LAND maneuver's TERMINATOR --
+not an independent health monitor -- so its detector runs IN this node (gated to the descent),
+keeping response the SOLE kill authority under the same not-manual + armed gate, with no L1/L2
+round-trip. Thresholds (response.yaml touchdown:) were tuned on real landings: descent vert<=~13,
+impact 20..50.
 """
 import rospy
 from mavros_msgs.msg import State, RCIn, PositionTarget
+from sensor_msgs.msg import Imu
 from diagnostic_msgs.msg import DiagnosticStatus
 
 from flight_safety.actions import MavrosActions
+from flight_safety.touchdown import TouchdownDetector, world_vert
 from flight_safety.msg import Fault, FlightState
 
 OK, WARN, ERROR = DiagnosticStatus.OK, DiagnosticStatus.WARN, DiagnosticStatus.ERROR
@@ -58,12 +67,25 @@ class Response(object):
         self.normal_stamp = rospy.Time(0)   # last /local_controller/setpoint_raw/local arrival (staleness guard)
         self.killed = False       # OUR force-disarm latched (auto, ERROR) -- distinct from pilot kill switch
         self._last_manual = None
+        self.in_land = False      # lane==LAND and armed -> arm the touchdown detector (the descent's terminator)
+        self.touchdown_fired = False   # latched IMU touchdown -> _tick escalates LAND to KILL
 
         rospy.Subscriber("/flight_safety/fault", Fault, self._on_fault, queue_size=1)
         rospy.Subscriber("/mavros/state", State, self._on_state, queue_size=5)
         rospy.Subscriber(rc.get("topic", "/mavros/rc/in"), RCIn, self._on_rc, queue_size=5)
         rospy.Subscriber(rospy.get_param("~normal_in", "/local_controller/setpoint_raw/local"),
                          PositionTarget, self._on_normal, queue_size=1)
+
+        # touchdown = the LAND maneuver's terminator (not a health monitor): run its detector IN this
+        # node, gated to the descent, so response stays the SOLE kill authority (no inject/monitor hop).
+        td = rospy.get_param("~touchdown", {})
+        self.touchdown = None
+        if td.get("enabled", True):
+            self.touchdown = TouchdownDetector(
+                vert_thresh=td.get("vert_thresh", 16.0), gyro_thresh=td.get("gyro_thresh", 0.3),
+                min_land_s=td.get("min_land_s", 0.3), confirm=td.get("confirm", 2),
+                window_s=td.get("window_s", 0.25))
+            rospy.Subscriber(td.get("imu_topic", "/mavros/imu/data"), Imu, self._on_imu, queue_size=10)
 
         hz = float(rospy.get_param("~react_rate_hz", 50.0))
         rospy.Timer(rospy.Duration(1.0 / hz), self._tick)
@@ -80,6 +102,17 @@ class Response(object):
     def _on_normal(self, m):
         self.normal = m
         self.normal_stamp = rospy.Time.now()
+
+    def _on_imu(self, m):
+        """High-rate IMU -> touchdown detector, armed only while LANDing (self.in_land). A confirmed
+        ground contact latches; _tick escalates LAND -> KILL so the not-manual+armed gate and the
+        single kill authority both still apply."""
+        a, o, g = m.linear_acceleration, m.orientation, m.angular_velocity
+        vert = world_vert(o.x, o.y, o.z, o.w, a.x, a.y, a.z)
+        gmag = (g.x * g.x + g.y * g.y + g.z * g.z) ** 0.5
+        if self.touchdown.update(m.header.stamp.to_sec(), vert, gmag, self.in_land) and not self.touchdown_fired:
+            self.touchdown_fired = True
+            rospy.logfatal("[safety] touchdown vert=%.1f gyro=%.2f during LAND -> KILL", vert, gmag)
 
     def _manual(self):
         """Pilot owns the vehicle: FC is in a non-OFFBOARD mode (pilot selected it, or PX4 RC-override
@@ -106,6 +139,10 @@ class Response(object):
         manual = self._manual()
         lane = "KILL" if (kill or self.killed) else ("MANUAL" if manual else _LANE.get(level, "NORMAL"))
 
+        self.in_land = (lane == "LAND" and self.armed)   # arm the touchdown detector only on a real descent
+        if not self.in_land:
+            self.touchdown_fired = False
+
         self._publish_state(now, lane, manual, kill)   # always, even disarmed
 
         if self.killed or kill:               # terminated -- reflect only, never forward/fight it
@@ -114,9 +151,10 @@ class Response(object):
         # LAND/KILL actuation: only when flight_safety owns the vehicle (OFFBOARD, not manual) and
         # armed. In a manual (non-OFFBOARD) mode the pilot owns it -- step back, no land/kill.
         if not manual and (self.armed or not self.require_armed):
-            if level >= ERROR:
+            if level >= ERROR or self.touchdown_fired:    # ERROR fault OR touchdown during LAND
                 self.killed = True
-                rospy.logfatal("[safety] KILL: %s", ", ".join(self.fault.names) or "error")
+                why = "touchdown" if (self.touchdown_fired and level < ERROR) else (", ".join(self.fault.names) or "error")
+                rospy.logfatal("[safety] KILL: %s", why)
                 self.actions.kill()
                 return
             if level >= WARN:
