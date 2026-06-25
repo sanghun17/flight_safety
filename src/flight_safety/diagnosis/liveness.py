@@ -8,6 +8,8 @@ import rospy
 from rospy import AnyMsg
 from diagnostic_msgs.msg import DiagnosticStatus
 
+from flight_safety.diagnosis import add_measurement
+
 
 class TopicLiveness(object):
     def __init__(self, cfg):
@@ -25,7 +27,7 @@ class TopicLiveness(object):
             stat.summary(DiagnosticStatus.OK, "no msg yet (neutral)")
             return
         age = (rospy.Time.now() - self.last_rx).to_sec()
-        stat.add("age_s", "%.2f" % age)
+        add_measurement(stat, age, "s", error=self.stale)
         if age > self.stale:
             stat.summary(DiagnosticStatus.ERROR, "DEAD: no msg %.1fs" % age)
         else:

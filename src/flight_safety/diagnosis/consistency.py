@@ -9,6 +9,8 @@ import message_filters
 from geometry_msgs.msg import PoseStamped
 from diagnostic_msgs.msg import DiagnosticStatus
 
+from flight_safety.diagnosis import add_measurement
+
 
 def _xyz(m):
     p = m.pose.position
@@ -43,7 +45,7 @@ class ConsistencyDiag(object):
         if age > self.pair_timeout:
             stat.summary(DiagnosticStatus.ERROR, "stale: no pair %.1fs" % age)
             return
-        stat.add("err_m", "%.3f" % self.err)
+        add_measurement(stat, self.err, "m", warn=self.warn, error=self.error)
         if self.err > self.error:
             stat.summary(DiagnosticStatus.ERROR, "MISMATCH %.2fm" % self.err)
         elif self.err > self.warn:

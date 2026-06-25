@@ -9,6 +9,8 @@ from geometry_msgs.msg import PoseStamped
 from diagnostic_msgs.msg import DiagnosticStatus
 from visualization_msgs.msg import Marker
 
+from flight_safety.diagnosis import add_measurement
+
 _AXES = ("x", "y", "z")
 INSIDE, APPROACHING, OUTSIDE, UNKNOWN = "INSIDE", "APPROACHING", "OUTSIDE", "UNKNOWN"
 # fixed status semantics (not config). APPROACHING blinks _COLOR[APPROACHING] <-> _COLOR[OUTSIDE].
@@ -35,30 +37,32 @@ class GeofenceDiag(object):
         self.last_rx = rospy.Time.now()
 
     def status(self, now):
+        # returns (state, margin_m): signed min distance to nearest wall, <0 once outside.
         if self.last_rx is None or (now - self.last_rx).to_sec() > self.timeout:
-            return UNKNOWN
-        worst = float("inf")
+            return UNKNOWN, None
+        margin = float("inf")
         for i, ax in enumerate(_AXES):
             lo, hi = self.box[ax]
-            c = self.pos[i]
-            if c < lo or c > hi:
-                return OUTSIDE
-            worst = min(worst, c - lo, hi - c)
-        return APPROACHING if worst < self.margin else INSIDE
+            margin = min(margin, self.pos[i] - lo, hi - self.pos[i])
+        if margin < 0.0:
+            return OUTSIDE, margin
+        return (APPROACHING if margin < self.margin else INSIDE), margin
 
     def run_diag(self, stat):
-        st = self.status(rospy.Time.now())
+        st, margin = self.status(rospy.Time.now())
         if self.pos is not None:
             stat.add("pos_xyz_m", "[%.2f %.2f %.2f]" % self.pos)
         stat.add("status", st)
+        if margin is not None:
+            add_measurement(stat, margin, "m", warn=self.margin, error=0.0)
         if st == OUTSIDE:
-            stat.summary(DiagnosticStatus.ERROR, "OUTSIDE")
+            stat.summary(DiagnosticStatus.ERROR, "OUTSIDE %.2fm past wall" % -margin)
         elif st == APPROACHING:
-            stat.summary(DiagnosticStatus.WARN, "APPROACHING")
+            stat.summary(DiagnosticStatus.WARN, "APPROACHING %.2fm to wall" % margin)
         elif st == UNKNOWN:
             stat.summary(DiagnosticStatus.ERROR, "no pose (lost localization)")
         else:
-            stat.summary(DiagnosticStatus.OK, "INSIDE")
+            stat.summary(DiagnosticStatus.OK, "INSIDE %.2fm" % margin)
 
     def _color(self, st, t):
         if st == APPROACHING and (t * _BLINK_HZ) % 1.0 >= 0.5:
@@ -67,7 +71,7 @@ class GeofenceDiag(object):
 
     def _publish_marker(self, _evt):
         now = rospy.Time.now()
-        st = self.status(now)
+        st, _ = self.status(now)
         m = Marker()
         m.header.frame_id = self.frame
         m.header.stamp = now
