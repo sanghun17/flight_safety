@@ -1,0 +1,53 @@
+<launch>
+  <!-- Estimation MUX: select the odom/pose SOURCE for CONTROL and for
+       PLANNING(+mapping) INDEPENDENTLY. This ONE launch governs all three
+       consumers (control = PX4 EKF2, planner_node + jax, voxblox mapping).
+       Switch a run by editing the `source` defaults below (or live:
+       rosservice call /<mux>/select "topic: '...'", echoes on /<mux>/selected).
+       No separate config file, no CLI args.
+
+       source (mocap|vio): CONTROL vision source -> /mavros/vision_pose/pose ->
+         PX4 EKF2; the fused /mavros/local_position/odom is relayed -> /robot/odom
+         (= /system/odom_topic; control_bridge + traj_server). FAST-LIVO must run
+         body_calib_en:=true (else two publishers on the vio path). NOTE:
+         /aft_mapped_to_body is the LIVO-world body pose, not origin-aligned to
+         OptiTrack, so a mid-flight control mocap<->vio switch steps by the offset.
+
+       planning_source (mocap|vio): PLANNING(+mapping) source -> /robot/odom_planning
+         (= /system/planning_odom_topic; planner_node + jax + voxblox). Decoupled
+         from control: control=mocap keeps position/velocity tracking on truth while
+         planning=vio lets a FAST-LIVO divergence corrupt the planner's perceived
+         pose + the voxblox map -> performance degrades SAFELY (control stays put).
+           mocap -> /mavros/local_position/odom (EKF2 fused = control's estimate; twist)
+           vio   -> /LIVO2/imu_propagate         (raw FAST-LIVO, twist; NOT the
+                                                   PoseStamped /aft_mapped_to_body) -->
+  <arg name="source"          default="mocap"/>   <!-- control:  mocap | vio -->
+  <arg name="planning_source" default="mocap"/>   <!-- planning: mocap | vio -->
+
+  <!-- Reject the incoherent combo: planning=mocap maps to /mavros/local_position/odom
+       (EKF2 output), which is mocap-based ONLY when control=mocap. control=vio +
+       planning=mocap would silently feed planning the vio-fused estimate -> abort the
+       launch (KeyError shows the message) instead of running something wrong. -->
+  <arg name="_guard" value="$(eval 'ok' if (source != 'vio' or planning_source != 'mocap') else {}['INVALID: control_source=vio + planning_source=mocap — /mavros/local_position/odom is vio-fused, not mocap. Set planning_source=vio, or control_source=mocap.'])"/>
+
+  <!-- CONTROL vision source -> EKF2 -->
+  <node pkg="topic_tools" type="mux" name="vision_pose_mux" output="screen"
+        launch-prefix="taskset -c $(optenv CPUS_POOL 4-11)"
+        args="/mavros/vision_pose/pose /vrpn_client_node/pure/pose /aft_mapped_to_body">
+    <param name="initial_topic" value="/aft_mapped_to_body"         if="$(eval source == 'vio')"/>
+    <param name="initial_topic" value="/vrpn_client_node/pure/pose" unless="$(eval source == 'vio')"/>
+  </node>
+  <!-- EKF2 fused -> /robot/odom (control odom; carries twist). Single producer of
+       /robot/odom for real flight. Flows once mavros is up + EKF2 has converged. -->
+  <node pkg="topic_tools" type="relay" name="robot_odom_relay"
+        launch-prefix="taskset -c $(optenv CPUS_POOL 4-11)"
+        args="/mavros/local_position/odom /robot/odom"/>
+
+  <!-- PLANNING(+mapping) source -> /robot/odom_planning -->
+  <node pkg="topic_tools" type="mux" name="planning_odom_mux" output="screen"
+        launch-prefix="taskset -c $(optenv CPUS_POOL 4-11)"
+        args="/robot/odom_planning /mavros/local_position/odom /LIVO2/imu_propagate">
+    <param name="initial_topic" value="/LIVO2/imu_propagate"        if="$(eval planning_source == 'vio')"/>
+    <param name="initial_topic" value="/mavros/local_position/odom" unless="$(eval planning_source == 'vio')"/>
+  </node>
+</launch>

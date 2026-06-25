@@ -2,6 +2,7 @@
 # Records ONLY the safety verdicts + the minimal context to read them. Tiny; always-on.
 bag_dir: /work/flight_logs
 prefix: safety
+record_all: true            # STAGE1: -a full capture for failure analysis (topics list below ignored while true)
 lz4: true
 stop_settle: 10.0
 topics:

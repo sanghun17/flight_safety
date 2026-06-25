@@ -2,7 +2,7 @@
   <!-- Whole flight-safety module: observe (L1+L2) + response (L3, KILL AUTHORITY) + estimator mux. -->
   <include file="$(find flight_safety)/launch/observe.launch"/>
   <include file="$(find flight_safety)/launch/response.launch"/>
-  <include file="$(find flight_safety)/launch/vision_pose_mux.launch"/>
+  <include file="$(find flight_safety)/launch/estimation_mux.launch"/>
   <!-- arm-triggered flight-safety recorder: ARM -> log fault/state, DISARM -> stop (record_on_arm:=false to disable) -->
   <arg name="record_on_arm" default="true"/>
   <include file="$(find flight_safety)/launch/recorder.launch" if="$(arg record_on_arm)"/>
