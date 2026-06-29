@@ -19,8 +19,8 @@
          planning=vio lets a FAST-LIVO divergence corrupt the planner's perceived
          pose + the voxblox map -> performance degrades SAFELY (control stays put).
            mocap -> /mavros/local_position/odom (EKF2 fused = control's estimate; twist)
-           vio   -> /LIVO2/imu_propagate         (raw FAST-LIVO, twist; NOT the
-                                                   PoseStamped /aft_mapped_to_body) -->
+           vio   -> /aft_mapped_to_body_imu_propagated (body-frame pose == /aft_mapped_to_body
+                                                   + twist, IMU rate; Odometry, not PoseStamped) -->
   <arg name="source"          default="mocap"/>   <!-- control:  mocap | vio -->
   <arg name="planning_source" default="mocap"/>   <!-- planning: mocap | vio -->
 
@@ -46,8 +46,8 @@
   <!-- PLANNING(+mapping) source -> /robot/odom_planning -->
   <node pkg="topic_tools" type="mux" name="planning_odom_mux" output="screen"
         launch-prefix="taskset -c $(optenv CPUS_POOL 4-11)"
-        args="/robot/odom_planning /mavros/local_position/odom /LIVO2/imu_propagate">
-    <param name="initial_topic" value="/LIVO2/imu_propagate"        if="$(eval planning_source == 'vio')"/>
+        args="/robot/odom_planning /mavros/local_position/odom /aft_mapped_to_body_imu_propagated">
+    <param name="initial_topic" value="/aft_mapped_to_body_imu_propagated"        if="$(eval planning_source == 'vio')"/>
     <param name="initial_topic" value="/mavros/local_position/odom" unless="$(eval planning_source == 'vio')"/>
   </node>
 </launch>

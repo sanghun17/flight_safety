@@ -2,11 +2,33 @@
 # Records ONLY the safety verdicts + the minimal context to read them. Tiny; always-on.
 bag_dir: /work/flight_logs
 prefix: safety
-record_all: true            # STAGE1: -a full capture for failure analysis (topics list below ignored while true)
+record_all: true            # -a full capture (failure analysis). false로 바꾸면 아래 topics만 (가벼움).
 lz4: true
 stop_settle: 10.0
+# ml PC 웹캠 recorder(recorder.py) 같이 트리거 — ARM에서 같은 basename으로 .mp4 시작, DISARM에서 stop.
+webcam_enable: true         # ml PC에서 recorder.py 안 떠있으면 경고만 찍고 무해.
+webcam_host: 192.168.50.12
+webcam_port: 8088
+webcam_timeout: 5.0
+# record_all:false 일 때 녹화셋 — 안전 verdict + goal/odom + 궤적 b-spline 전→후 + 최종 명령.
 topics:
-  - /flight_safety/fault     # L2 worst-severity verdict
-  - /flight_safety/state     # L3 unified flight-safety state (dashboard)
-  - /diagnostics             # L1 raw per-subsystem health (what the monitor consumes)
-  - /mavros/state            # arming/mode context to read the fault timeline
+  # 안전 / 컨텍스트
+  - /flight_safety/fault                  # L2 worst-severity verdict
+  - /flight_safety/state                  # L3 unified flight-safety state
+  - /diagnostics                          # L1 per-subsystem health
+  - /mavros/state                         # arming/mode timeline
+  # goal / odom
+  - /planner/command/trajectory           # goal (point[1])
+  - /robot/odom                           # control odom
+  - /robot/odom_planning                  # planning odom (jax 입력)
+  - /mavros/local_position/odom           # EKF2 fused
+  # 궤적: b-spline 전 → 후 비교
+  - /jax/optimal_trajectory               # b-spline 전 (raw JAX)
+  - /planning/trajectory                  # MixTraj (b-spline 제어점)
+  - /planning/pos_cmd                     # b-spline 후 (traj_server 50Hz)
+  - /jax_to_mixtraj/raw_path              # 비교용 raw path
+  - /jax_to_mixtraj/bspline_path          # 비교용 b-spline curve
+  - /jax/debug_info                       # jax 내부 진단
+  # 최종 명령
+  - /local_controller/setpoint_raw/local  # control 출력 (MUX 전)
+  - /mavros/setpoint_raw/local            # MUX 후 → FCU
