@@ -17,6 +17,7 @@
   <exec_depend>diagnostic_msgs</exec_depend>
   <exec_depend>mavros_msgs</exec_depend>
   <exec_depend>visualization_msgs</exec_depend>
+  <exec_depend>std_srvs</exec_depend>
   <depend>std_msgs</depend>
 
   <!-- C++ header export (stream_diagnostic.h): build+export deps, not just exec -->
