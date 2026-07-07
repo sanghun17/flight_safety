@@ -92,7 +92,7 @@ VRPN mocap을 1차 위치원으로 쓰되, **mocap 상실 시 학습형 관성 �
 ## 3. 추정 스택
 
 ### 3.1 vision_pose 단일화 (현재 충돌 해소)
-현재 `optitrack.launch`(VRPN→vision_pose @30Hz)와 `real_flight.launch`의 `vision_pose_relay.py`(FAST-LIVO→vision_pose @50Hz)가 **같은 토픽을 동시에 노린다 → 충돌.** 이를 **단일 MUX 노드**로 대체한다:
+(구버전 DRAFT 서술) 당시 `optitrack.launch`(VRPN→vision_pose @30Hz)와 `real_flight.launch`의 `vision_pose_relay.py`(FAST-LIVO→vision_pose @50Hz)가 **같은 토픽을 동시에 노린다 → 충돌**했다. 이를 **단일 MUX 노드**로 대체 — `estimation_mux.launch`로 이미 구현 완료되었고, 충돌을 일으키던 `real_flight.launch`/`vision_pose_relay.py`는 이후 죽은 코드로 삭제되었다:
 
 - **입력**: VRPN pose, AirIO body velocity(+cov).
 - **정책**:
