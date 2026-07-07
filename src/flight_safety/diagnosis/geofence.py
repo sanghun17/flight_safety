@@ -1,11 +1,11 @@
 """L1 diagnosis: geofence box health from OptiTrack (VRPN) position, + an rviz marker.
 
 INSIDE -> OK | APPROACHING -> WARN | OUTSIDE -> ERROR | no pose -> ERROR (lost localization -> kill).
-Boundary + margin are config (diagnosis.yaml geofence.box / margin_m). Status COLORS are fixed
-semantics (green / yellow-red blink / red / gray), not config. Severity IS the policy: WARN->land, ERROR->kill.
+Boundary + margin are config (diagnosis.yaml geofence.box / margin_m). The rviz marker is a
+wireframe box, status-colored (green / yellow-red blink / red / gray). Severity IS the policy: WARN->land, ERROR->kill.
 """
 import rospy
-from geometry_msgs.msg import PoseStamped
+from geometry_msgs.msg import PoseStamped, Point
 from diagnostic_msgs.msg import DiagnosticStatus
 from visualization_msgs.msg import Marker
 
@@ -16,7 +16,7 @@ INSIDE, APPROACHING, OUTSIDE, UNKNOWN = "INSIDE", "APPROACHING", "OUTSIDE", "UNK
 # fixed status semantics (not config). APPROACHING blinks _COLOR[APPROACHING] <-> _COLOR[OUTSIDE].
 _COLOR = {INSIDE: (0.0, 1.0, 0.0), APPROACHING: (1.0, 1.0, 0.0),
           OUTSIDE: (1.0, 0.0, 0.0), UNKNOWN: (0.5, 0.5, 0.5)}
-_BLINK_HZ, _ALPHA, _MARKER_TOPIC = 3.0, 0.15, "/flight_safety/geofence"
+_BLINK_HZ, _LINE_W, _ALPHA, _MARKER_TOPIC = 3.0, 0.02, 0.9, "/flight_safety/geofence"   # line width (m)
 
 
 class GeofenceDiag(object):
@@ -64,6 +64,14 @@ class GeofenceDiag(object):
         else:
             stat.summary(DiagnosticStatus.OK, "INSIDE %.2fm" % margin)
 
+    @staticmethod
+    def _box_edges(bounds):
+        """12 edges of an axis-aligned box -> list of (p0, p1) corner-pair tuples."""
+        corners = {(i, j, k): (bounds["x"][i], bounds["y"][j], bounds["z"][k])
+                   for i in (0, 1) for j in (0, 1) for k in (0, 1)}
+        return [(corners[a], corners[b]) for a in corners for b in corners
+                if a < b and sum(u != v for u, v in zip(a, b)) == 1]
+
     def _color(self, st, t):
         if st == APPROACHING and (t * _BLINK_HZ) % 1.0 >= 0.5:
             return _COLOR[OUTSIDE]
@@ -75,12 +83,12 @@ class GeofenceDiag(object):
         m = Marker()
         m.header.frame_id = self.frame
         m.header.stamp = now
-        m.ns, m.id, m.type, m.action = "geofence", 0, Marker.CUBE, Marker.ADD
-        for ax in _AXES:
-            lo, hi = self.box[ax]
-            setattr(m.scale, ax, hi - lo)
-            setattr(m.pose.position, ax, 0.5 * (lo + hi))
+        m.ns, m.id, m.type, m.action = "geofence", 0, Marker.LINE_LIST, Marker.ADD
         m.pose.orientation.w = 1.0
+        m.scale.x = _LINE_W
+        for p0, p1 in self._box_edges({ax: tuple(self.box[ax]) for ax in _AXES}):
+            for x, y, z in (p0, p1):
+                m.points.append(Point(x, y, z))
         m.color.r, m.color.g, m.color.b = self._color(st, now.to_sec())
         m.color.a = _ALPHA
         self.marker_pub.publish(m)

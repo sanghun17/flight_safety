@@ -9,8 +9,8 @@ geofence:
   box: { x: [-2.25, 2.25], y: [-2.25, 2.25], z: [-0.5, 2.0] }     # m (boundary)
   margin_m: 0.5            # within this of a wall -> APPROACHING (WARN -> land)
   pose_timeout_s: 0.2      # no pose within this -> ERROR (lost localization -> kill)
-  # rviz marker /flight_safety/geofence: colors (green / yellow-red blink 3Hz / red / gray) are
-  # fixed in code; marker frame follows the vrpn pose header (set rviz Fixed Frame to it, e.g. odom).
+  # rviz marker /flight_safety/geofence: wireframe box, status colors (green / yellow-red blink 3Hz /
+  # red / gray) fixed in code; marker frame follows the vrpn pose header (set rviz Fixed Frame to it, e.g. odom).
 
 consistency:
   topic_a: /vrpn_client_node/pure/pose
