@@ -38,12 +38,22 @@ _MASK_VEL = (PositionTarget.IGNORE_PX | PositionTarget.IGNORE_PY | PositionTarge
              PositionTarget.IGNORE_AFX | PositionTarget.IGNORE_AFY | PositionTarget.IGNORE_AFZ |
              PositionTarget.IGNORE_YAW)
 
+# IdleHold: position + yaw hold (ignore velocity/accel/yaw_rate). Used to hold the
+# LAST commanded position when the Normal (planner/control) stream goes stale.
+_MASK_HOLD = (PositionTarget.IGNORE_VX | PositionTarget.IGNORE_VY | PositionTarget.IGNORE_VZ |
+              PositionTarget.IGNORE_AFX | PositionTarget.IGNORE_AFY | PositionTarget.IGNORE_AFZ |
+              PositionTarget.IGNORE_YAW_RATE)
+
 
 class Response(object):
     def __init__(self):
         self.require_armed = bool(rospy.get_param("~require_armed", True))
         self.descend = abs(float(rospy.get_param("~land", {}).get("descend_mps", 0.4)))
         self.normal_timeout = float(rospy.get_param("~normal_timeout_s", 0.5))   # drop a stale planner setpoint
+        # IdleHold: when the Normal stream goes stale, hold the LAST commanded position
+        # (lowest priority, below Normal). Set ~idle_hold:=false to restore the original
+        # behavior (no publish on stale -> PX4 offboard-loss failsafe on control_bridge crash).
+        self.idle_hold_enabled = bool(rospy.get_param("~idle_hold", True))
         self.estimator = str(rospy.get_param("~estimator", "VRPN"))
         rc = rospy.get_param("~rc", {})
         self.rc_channels = rc.get("channels", [0, 1, 3])
@@ -65,6 +75,7 @@ class Response(object):
         self.rc = []
         self.normal = None
         self.normal_stamp = rospy.Time(0)   # last /local_controller/setpoint_raw/local arrival (staleness guard)
+        self.idle_hold = None   # latched position-hold setpoint (last commanded position), for IdleHold fallback
         self.killed = False       # OUR force-disarm latched (auto, ERROR) -- distinct from pilot kill switch
         self._last_manual = None
         self.in_land = False      # lane==LAND and armed -> arm the touchdown detector (the descent's terminator)
@@ -102,6 +113,21 @@ class Response(object):
     def _on_normal(self, m):
         self.normal = m
         self.normal_stamp = rospy.Time.now()
+        # Latch this command's POSITION for the IdleHold fallback. Only commands that
+        # actually carry a local-frame position are usable (velocity-only setpoints have
+        # no position to hold); the active control_bridge modes (pos_cmd/pos_step) are
+        # FRAME_LOCAL_NED position-bearing, so this latches on every normal replan.
+        has_pos = not (m.type_mask & PositionTarget.IGNORE_PX)
+        if has_pos and m.coordinate_frame == PositionTarget.FRAME_LOCAL_NED:
+            hold = PositionTarget()
+            hold.coordinate_frame = PositionTarget.FRAME_LOCAL_NED
+            hold.type_mask = _MASK_HOLD
+            hold.position = m.position
+            if not (m.type_mask & PositionTarget.IGNORE_YAW):
+                hold.yaw = m.yaw
+            else:
+                hold.type_mask |= PositionTarget.IGNORE_YAW
+            self.idle_hold = hold
 
     def _on_imu(self, m):
         """High-rate IMU -> touchdown detector, armed only while LANDing (self.in_land). A confirmed
@@ -164,10 +190,15 @@ class Response(object):
         # NORMAL stream: forward the FRESH planner/control setpoint to the FCU. ALWAYS (even
         # disarmed / POSCTL) so the pilot can ENTER offboard -- PX4 ignores offboard setpoints
         # unless in OFFBOARD, so forwarding pre-offboard is harmless but keeps the stream alive.
-        # Staleness guard: if control_bridge stops, the stream stops -> PX4 offboard-loss failsafe
-        # rather than latching the last command. This MUX is the SOLE publisher to setpoint_out.
+        # This MUX is the SOLE publisher to setpoint_out.
+        # Priority tail: Normal(fresh) > IdleHold(0). When Normal goes stale (planner toggled
+        # off / done, or control_bridge crash), IdleHold holds the LAST commanded position so
+        # the stream stays alive and the drone holds in place instead of PX4 offboard-loss
+        # failsafe. Disable with ~idle_hold:=false to restore the failsafe-on-stale behavior.
         if self.normal is not None and (now - self.normal_stamp).to_sec() < self.normal_timeout:
             self._publish_setpoint(self.normal)
+        elif self.idle_hold_enabled and self.idle_hold is not None:
+            self._publish_setpoint(self.idle_hold)
 
     def _to_manual(self, now):
         if self._last_manual is None or (now - self._last_manual).to_sec() > 1.0:
