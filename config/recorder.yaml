@@ -3,6 +3,7 @@
 bag_dir: /work/flight_logs
 prefix: safety
 record_all: true            # -a full capture (failure analysis). false로 바꾸면 아래 topics만 (가벼움).
+exclude: '(/camera/color/image_raw(_10hz)?$)|(/camera/depth/image_rect_raw$)|(/camera/depth/color/points$)|(/camera/depth_overlay$)|(/recorder_cam[12]/.*)'  # record_all -> -a -x: drop raw realsense + webcam
 lz4: true
 stop_settle: 10.0
 # /recorder ROS 노드(std_srvs/Trigger) 같이 트리거 — ARM에서 .mp4 시작(recorder가 flight_<stamp>로 명명), DISARM에서 stop.
@@ -22,6 +23,7 @@ topics:
   - /robot/odom                           # control odom
   - /robot/odom_planning                  # planning odom (jax 입력)
   - /mavros/local_position/odom           # EKF2 fused
+  - /aft_mapped_to_body_imu_propagated   # fast-livo world twist (jax context vel 소스 — 2026-07-10 오프라인 분석용 추가)
   # 궤적: b-spline 전 → 후 비교
   - /jax/optimal_trajectory               # b-spline 전 (raw JAX)
   - /planning/trajectory                  # MixTraj (b-spline 제어점)
