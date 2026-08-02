@@ -3,7 +3,7 @@
 bag_dir: /work/flight_logs
 prefix: safety
 record_all: true            # -a full capture (failure analysis). false로 바꾸면 아래 topics만 (가벼움).
-exclude: '(/camera/color/image_raw(_10hz)?$)|(/camera/depth/image_rect_raw$)|(/camera/depth/color/points$)|(/camera/depth_overlay$)|(/recorder_cam[12]/.*)'  # record_all -> -a -x: drop raw realsense + webcam
+exclude: '(/camera/color/image_raw(_10hz)?$)|(/camera/color/image_raw(_10hz)?/compressedDepth($|/.*))|(/camera/depth/image_rect_raw$)|(/camera/depth/color/points$)|(/camera/depth_overlay$)|(/recorder_cam[12]/.*)'  # record_all -> -a -x: drop raw realsense + invalid color compressedDepth + webcam
 lz4: true
 stop_settle: 10.0
 # /recorder ROS 노드(std_srvs/Trigger) 같이 트리거 — ARM에서 .mp4 시작(recorder가 flight_<stamp>로 명명), DISARM에서 stop.
