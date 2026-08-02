@@ -12,6 +12,9 @@ ROS node on the same master). Fire-and-forget in a daemon thread: an unavailable
 service logs a warning but never blocks or fails the rosbag capture. (Trigger
 takes no args, so the .mp4 keeps the recorder's own flight_<stamp> name.)
 
+The same edge owns the actual-odometry history session. ARM clears and starts
+/robot/odom_history; DISARM freezes it while leaving the just-flown path visible.
+
 Params (set in launch/config/recorder.yaml):
   ~bag_dir     output dir (default /work/flight_logs)
   ~prefix      bag basename prefix (default "flight")
@@ -23,6 +26,10 @@ Params (set in launch/config/recorder.yaml):
   ~webcam_start_srv  Trigger service that starts it (default /recorder/start)
   ~webcam_stop_srv   Trigger service that stops it  (default /recorder/stop)
   ~webcam_timeout    wait_for_service timeout seconds (default 5)
+  ~odom_history_enable     drive the actual-path visualizer (default true)
+  ~odom_history_start_srv  Trigger start/reset service
+  ~odom_history_stop_srv   Trigger stop/freeze service
+  ~odom_history_timeout    wait_for_service timeout seconds (default 1)
 """
 import os
 import re
@@ -56,9 +63,19 @@ class ArmRecorder(object):
         self.webcam_start_srv = rospy.get_param("~webcam_start_srv", "/recorder/start")
         self.webcam_stop_srv = rospy.get_param("~webcam_stop_srv", "/recorder/stop")
         self.webcam_timeout = float(rospy.get_param("~webcam_timeout", 5.0))
+        self.odom_history_on = False
+        self.odom_history_enable = bool(rospy.get_param("~odom_history_enable", True))
+        self.odom_history_start_srv = rospy.get_param(
+            "~odom_history_start_srv", "/robot_odom_history/start")
+        self.odom_history_stop_srv = rospy.get_param(
+            "~odom_history_stop_srv", "/robot_odom_history/stop")
+        self.odom_history_timeout = float(rospy.get_param("~odom_history_timeout", 1.0))
         if self.webcam_enable:
             rospy.loginfo("[arm_recorder] webcam via ROS service %s / %s",
                           self.webcam_start_srv, self.webcam_stop_srv)
+        if self.odom_history_enable:
+            rospy.loginfo("[arm_recorder] odom history via ROS service %s / %s",
+                          self.odom_history_start_srv, self.odom_history_stop_srv)
         if not self.record_all and not self.topics:
             rospy.logwarn("[arm_recorder] record_all=false but ~topics is empty -> nothing to record")
         self._recover_orphans()   # boot self-heal: re-queue bags whose recorder died before marking .ready
@@ -95,13 +112,16 @@ class ArmRecorder(object):
         self.proc = subprocess.Popen(cmd, preexec_fn=os.setsid)
         rospy.loginfo("[arm_recorder] ARMED -> recording -> %s (pid %d)", self.cur_bag, self.proc.pid)
         self._webcam_start()
+        self._odom_history_start()
 
     def _webcam_start(self):
         if not self.webcam_enable or self.webcam_on:
             return
         self.webcam_on = True
         # fire-and-forget: starting the webcam must never delay or fail the ARM path
-        t = threading.Thread(target=self._call_trigger, args=(self.webcam_start_srv, "start"))
+        t = threading.Thread(
+            target=self._call_trigger,
+            args=(self.webcam_start_srv, "webcam", "start", self.webcam_timeout))
         t.daemon = True
         t.start()
 
@@ -110,25 +130,51 @@ class ArmRecorder(object):
         if not self.webcam_enable or not self.webcam_on:
             return None
         self.webcam_on = False
-        resp = self._call_trigger(self.webcam_stop_srv, "stop")
+        resp = self._call_trigger(
+            self.webcam_stop_srv, "webcam", "stop", self.webcam_timeout)
         if resp is not None and resp.success:
             m = re.search(r"(\S+\.mp4)", resp.message or "")
             if m:
                 return m.group(1)
         return None
 
-    def _call_trigger(self, srv, what):
+    def _odom_history_start(self):
+        if not self.odom_history_enable or self.odom_history_on:
+            return
+        self.odom_history_on = True
+        # Same non-blocking ARM policy as webcam: visualization availability
+        # must never delay/fail rosbag startup.
+        t = threading.Thread(
+            target=self._call_trigger,
+            args=(self.odom_history_start_srv, "odom history", "start",
+                  self.odom_history_timeout))
+        t.daemon = True
+        t.start()
+
+    def _odom_history_stop(self):
+        if not self.odom_history_enable or not self.odom_history_on:
+            return
+        self.odom_history_on = False
+        # Synchronous on DISARM so the history freezes at the same session edge
+        # before rosbag receives SIGINT and finalizes.
+        self._call_trigger(
+            self.odom_history_stop_srv, "odom history", "stop",
+            self.odom_history_timeout)
+
+    def _call_trigger(self, srv, component, what, timeout):
         try:
-            rospy.wait_for_service(srv, timeout=self.webcam_timeout)
+            rospy.wait_for_service(srv, timeout=timeout)
             resp = rospy.ServiceProxy(srv, Trigger)()
             (rospy.loginfo if resp.success else rospy.logwarn)(
-                "[arm_recorder] webcam %s: %s", what, resp.message)
+                "[arm_recorder] %s %s: %s", component, what, resp.message)
             return resp
         except Exception as e:
-            rospy.logwarn("[arm_recorder] webcam %s failed (%s): %s", what, srv, e)
+            rospy.logwarn("[arm_recorder] %s %s failed (%s): %s",
+                          component, what, srv, e)
             return None
 
     def _stop(self):
+        self._odom_history_stop()
         mp4 = self._webcam_stop()
         proc, self.proc = self.proc, None
         if proc is not None:

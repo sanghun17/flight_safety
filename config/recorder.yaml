@@ -11,6 +11,11 @@ webcam_enable: true               # /recorder 노드 안 떠있으면 경고만 
 webcam_start_srv: /recorder/start # std_srvs/Trigger
 webcam_stop_srv: /recorder/stop
 webcam_timeout: 5.0               # wait_for_service 타임아웃(s)
+# 실제 비행 odometry path도 동일 ARM 세션으로 초기화/기록/정지. 실패해도 bag/webcam에는 무해.
+odom_history_enable: true
+odom_history_start_srv: /robot_odom_history/start
+odom_history_stop_srv: /robot_odom_history/stop
+odom_history_timeout: 1.0
 # record_all:false 일 때 녹화셋 — 안전 verdict + goal/odom + 궤적 b-spline 전→후 + 최종 명령.
 topics:
   # 안전 / 컨텍스트
