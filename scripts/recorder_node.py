@@ -15,6 +15,12 @@ takes no args, so the .mp4 keeps the recorder's own flight_<stamp> name.)
 The same edge owns the actual-odometry history session. ARM clears and starts
 /robot/odom_history; DISARM freezes it while leaving the just-flown path visible.
 
+Each bag also gets a ``<base>.runtime_manifest.yaml`` sidecar.  ARM captures the
+effective ROS parameters, source/config/model provenance and software state in
+the background.  DISARM adds the end snapshot and atomically finalizes the YAML
+before ``.ready`` is emitted, so the existing host watcher transfers a coherent
+bag+manifest pair.
+
 Params (set in launch/config/recorder.yaml):
   ~bag_dir     output dir (default /work/flight_logs)
   ~prefix      bag basename prefix (default "flight")
@@ -30,6 +36,9 @@ Params (set in launch/config/recorder.yaml):
   ~odom_history_start_srv  Trigger start/reset service
   ~odom_history_stop_srv   Trigger stop/freeze service
   ~odom_history_timeout    wait_for_service timeout seconds (default 1)
+  ~runtime_manifest_enable       write the YAML provenance sidecar
+  ~runtime_manifest_repo_paths   named git worktrees to capture
+  ~runtime_manifest_config_paths named source YAML files to embed
 """
 import os
 import re
@@ -40,6 +49,7 @@ import threading
 import rospy
 from mavros_msgs.msg import State
 from std_srvs.srv import Trigger
+from flight_safety.runtime_manifest import RuntimeManifestRecorder
 
 
 class ArmRecorder(object):
@@ -58,6 +68,7 @@ class ArmRecorder(object):
         self.proc = None
         self.cur_bag = None
         self.armed = False
+        self.last_mavros_state = None
         self.webcam_on = False
         self.webcam_enable = bool(rospy.get_param("~webcam_enable", True))
         self.webcam_start_srv = rospy.get_param("~webcam_start_srv", "/recorder/start")
@@ -70,6 +81,19 @@ class ArmRecorder(object):
         self.odom_history_stop_srv = rospy.get_param(
             "~odom_history_stop_srv", "/robot_odom_history/stop")
         self.odom_history_timeout = float(rospy.get_param("~odom_history_timeout", 1.0))
+        self.runtime_manifest = RuntimeManifestRecorder(
+            enabled=rospy.get_param("~runtime_manifest_enable", True),
+            repo_paths=rospy.get_param("~runtime_manifest_repo_paths", {}),
+            config_paths=rospy.get_param("~runtime_manifest_config_paths", {}),
+            command_timeout_s=rospy.get_param(
+                "~runtime_manifest_command_timeout_s", 6.0),
+            suffix=rospy.get_param(
+                "~runtime_manifest_suffix", ".runtime_manifest.yaml"),
+            git_diff_max_bytes=rospy.get_param(
+                "~runtime_manifest_git_diff_max_bytes", 262144),
+            log_info=rospy.loginfo,
+            log_warn=rospy.logwarn)
+        self.runtime_manifest_active = False
         if self.webcam_enable:
             rospy.loginfo("[arm_recorder] webcam via ROS service %s / %s",
                           self.webcam_start_srv, self.webcam_stop_srv)
@@ -86,6 +110,7 @@ class ArmRecorder(object):
                       self.bag_dir)
 
     def _on_state(self, m):
+        self.last_mavros_state = self._mavros_state_dict(m)
         if m.armed and not self.armed:
             self.armed = True
             self._start()
@@ -111,6 +136,14 @@ class ArmRecorder(object):
         # start in its own process group so our SIGINT goes to record, not the launcher
         self.proc = subprocess.Popen(cmd, preexec_fn=os.setsid)
         rospy.loginfo("[arm_recorder] ARMED -> recording -> %s (pid %d)", self.cur_bag, self.proc.pid)
+        try:
+            self.runtime_manifest.start(
+                self.cur_bag, self.last_mavros_state, cmd)
+            self.runtime_manifest_active = self.runtime_manifest.enabled
+        except Exception as e:
+            # Provenance must never interfere with the safety-critical ARM path.
+            self.runtime_manifest_active = False
+            rospy.logwarn("[arm_recorder] runtime manifest start failed: %s", e)
         self._webcam_start()
         self._odom_history_start()
 
@@ -177,6 +210,7 @@ class ArmRecorder(object):
         self._odom_history_stop()
         mp4 = self._webcam_stop()
         proc, self.proc = self.proc, None
+        rosbag_returncode = proc.poll() if proc is not None else None
         if proc is not None:
             rospy.loginfo("[arm_recorder] DISARMED -> stopping recorder (SIGINT, clean finalize)…")
             try:
@@ -189,14 +223,18 @@ class ArmRecorder(object):
                     pass
             try:
                 proc.wait(timeout=self.settle)
+                rosbag_returncode = proc.returncode
             except subprocess.TimeoutExpired:
                 rospy.logwarn("[arm_recorder] no clean exit in %.0fs -> SIGTERM/KILL (bag may be unindexed)", self.settle)
                 try:
                     proc.terminate()
                     proc.wait(timeout=3)
+                    rosbag_returncode = proc.returncode
                 except Exception:
                     try:
                         proc.kill()
+                        proc.wait(timeout=3)
+                        rosbag_returncode = proc.returncode
                     except Exception:
                         pass
         # ALWAYS finalize below (rename + mark for sync) even if stopping the recorder
@@ -208,11 +246,22 @@ class ArmRecorder(object):
                 rospy.logwarn("[arm_recorder] recovered unfinalized bag (.active): %s", self.cur_bag)
             except OSError:
                 self.cur_bag += ".active"   # sync as-is; host can rosbag reindex
+        original_bag = self.cur_bag
         self.cur_bag = self._match_bag_name(self.cur_bag, mp4)   # bag basename := webcam mp4 basename
         if self.cur_bag and os.path.exists(self.cur_bag):
             sz = os.path.getsize(self.cur_bag) / 1e6
             rospy.loginfo("[arm_recorder] STOPPED -> bag saved (%.1f MB): %s", sz, self.cur_bag)
-            self._mark_ready(self.cur_bag)   # host-side watcher rsyncs bag(+extrinsic) to the ml PC
+            if self.runtime_manifest_active:
+                try:
+                    self.runtime_manifest.finish(
+                        original_bag, self.cur_bag, self.last_mavros_state,
+                        rosbag_returncode=rosbag_returncode, webcam_path=mp4)
+                except Exception as e:
+                    # A partial start-sidecar is still useful.  Never strand the
+                    # bag merely because provenance finalization failed.
+                    rospy.logwarn("[arm_recorder] runtime manifest finish failed: %s", e)
+                self.runtime_manifest_active = False
+            self._mark_ready(self.cur_bag)   # watcher rsyncs bag+manifest+extrinsic to ML
         else:
             rospy.logwarn("[arm_recorder] no bag file to save/sync: %s", self.cur_bag)
 
@@ -237,6 +286,18 @@ class ArmRecorder(object):
             open(os.path.splitext(bag)[0] + ".ready", "w").close()
         except OSError as e:
             rospy.logwarn("[arm_recorder] could not write .ready marker: %s", e)
+
+    @staticmethod
+    def _mavros_state_dict(state):
+        """Stable YAML projection of mavros_msgs/State (no ROS object tags)."""
+        return {
+            "connected": bool(state.connected),
+            "armed": bool(state.armed),
+            "guided": bool(state.guided),
+            "manual_input": bool(state.manual_input),
+            "mode": str(state.mode),
+            "system_status": int(state.system_status),
+        }
 
     def _recover_orphans(self):
         """Boot self-heal for the finalize->mark_ready gap. If a recorder is killed after the bag

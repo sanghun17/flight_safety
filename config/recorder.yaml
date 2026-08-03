@@ -16,6 +16,27 @@ odom_history_enable: true
 odom_history_start_srv: /robot_odom_history/start
 odom_history_stop_srv: /robot_odom_history/stop
 odom_history_timeout: 1.0
+
+# Reproducibility sidecar.  ARM writes the start snapshot asynchronously;
+# DISARM appends the end snapshot before <base>.ready is created.  The existing
+# host watcher sends this YAML beside the bag and webcam files.
+runtime_manifest_enable: true
+runtime_manifest_suffix: .runtime_manifest.yaml
+runtime_manifest_command_timeout_s: 6.0
+runtime_manifest_git_diff_max_bytes: 262144
+runtime_manifest_repo_paths:
+  drone_stack: /work
+  risk_aware: /work/ws/risk-aware/src/risk_aware_planning
+  flight_safety: /work/ws/flight-safety/src/flight_safety
+runtime_manifest_config_paths:
+  planning: /work/ws/risk-aware/src/risk_aware_planning/mav_active_3d_planning/local_planner_mpc/config/planning.yaml
+  ete_training: /work/ws/risk-aware/src/risk_aware_planning/uncertainty_predictor/src/ete_net/config/ete_train_config.yaml
+  flight_safety_diagnosis: /work/ws/flight-safety/src/flight_safety/config/diagnosis.yaml
+  flight_safety_monitor: /work/ws/flight-safety/src/flight_safety/config/monitor.yaml
+  flight_safety_response: /work/ws/flight-safety/src/flight_safety/config/response.yaml
+  flight_safety_recorder: /work/ws/flight-safety/src/flight_safety/config/recorder.yaml
+  rviz: /work/rviz.rviz
+
 # record_all:false 일 때 녹화셋 — 안전 verdict + goal/odom + 궤적 b-spline 전→후 + 최종 명령.
 topics:
   # 안전 / 컨텍스트

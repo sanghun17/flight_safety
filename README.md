@@ -37,6 +37,26 @@ rosrun rqt_robot_monitor rqt_robot_monitor   # 트리 뷰
 rostopic echo /diagnostics
 ```
 
+## ARM recording provenance
+
+`recorder.launch` records one bag per ARM session.  In addition to the bag it
+now writes `<same-base>.runtime_manifest.yaml` and completes it before the
+`.ready` transfer marker is created.  The single YAML contains both ARM and
+DISARM snapshots of:
+
+- the complete ROS parameter tree and ROS node/topic/service graph;
+- the active `planning.yaml`, ETE training config, flight-safety configs, and
+  RViz config (parsed contents plus SHA-256);
+- `drone-stack-docker`, `risk_aware`, and `flight_safety` git HEAD/branch/dirty
+  state, including bounded tracked diffs;
+- the resolved checkpoint/context-stat paths and their SHA-256 values;
+- host/environment, MAVROS state, bag metadata, and start/end change flags.
+
+Start capture is asynchronous and cannot delay ARM.  Capture failures are
+written into `capture_errors` and never prevent bag finalization.  The Jetson
+host's existing `flightlog-sync` watcher transfers the manifest beside the bag,
+camera recordings, `webcam_extrinsics.json`, and `rviz.rviz`.
+
 ## 읽는 법 (consistency)
 
 VRPN과 `/mavros/local_position`은 **같은 프레임/원점이라 그냥 같아야** 한다. 차이 자체가 잡으려는 fault.
