@@ -5,7 +5,8 @@ estimator: VRPN                              # localization feeding EKF2 vision_
 
 setpoint_out: /mavros/setpoint_raw/local
 normal_in: /local_controller/setpoint_raw/local    # planner/control_bridge publishes here (NORMAL passthrough)
-normal_timeout_s: 0.5                         # drop a stale planner setpoint -> PX4 offboard-loss failsafe
+normal_timeout_s: 0.5                         # OFFBOARD entry requires a Normal command newer than this
+idle_hold: true                               # after valid entry only; cleared on arm/session changes
 
 land:
   descend_mps: 1.0                           # WARN -> emergency descend in place (vx=vy=yawrate=0, vz=-1 m/s; fast on purpose)

@@ -76,6 +76,11 @@ class Response(object):
         self.normal = None
         self.normal_stamp = rospy.Time(0)   # last /local_controller/setpoint_raw/local arrival (staleness guard)
         self.idle_hold = None   # latched position-hold setpoint (last commanded position), for IdleHold fallback
+        # An IdleHold belongs to exactly one arm/OFFBOARD session.  Never let a
+        # position latched during an earlier flight provide the setpoint stream
+        # that admits a later OFFBOARD request.
+        self._state_initialized = False
+        self._offboard_admitted = False
         self.killed = False       # OUR force-disarm latched (auto, ERROR) -- distinct from pilot kill switch
         self._last_manual = None
         self.in_land = False      # lane==LAND and armed -> arm the touchdown detector (the descent's terminator)
@@ -105,7 +110,37 @@ class Response(object):
         self.fault = m
 
     def _on_state(self, m):
+        previous_armed, previous_mode = self.armed, self.mode
         self.armed, self.mode = m.armed, m.mode
+
+        if not self._state_initialized:
+            self._state_initialized = True
+            # Starting this node while already armed is a new control session;
+            # keep the same invariant as a normal disarmed->armed transition.
+            if self.armed:
+                self._reset_control_session("initial armed state")
+            return
+
+        if self.armed != previous_armed:
+            self._reset_control_session("armed" if self.armed else "disarmed")
+        elif previous_mode == "OFFBOARD" and self.mode != "OFFBOARD":
+            # The vehicle may remain armed while the operator leaves OFFBOARD
+            # to restart the planning/control stack.  Treat re-entry as a new
+            # session and require a new Normal command.
+            self._reset_control_session("left OFFBOARD")
+
+    def _reset_control_session(self, reason):
+        self.normal = None
+        self.normal_stamp = rospy.Time(0)
+        self.idle_hold = None
+        self._offboard_admitted = False
+        rospy.logwarn("[safety] control session reset (%s): stale Normal/IdleHold cleared", reason)
+
+    def _normal_is_fresh(self, now):
+        if self.normal is None:
+            return False
+        age = (now - self.normal_stamp).to_sec()
+        return 0.0 <= age < self.normal_timeout
 
     def _on_rc(self, m):
         self.rc = list(m.channels)
@@ -160,6 +195,7 @@ class Response(object):
 
     def _tick(self, _evt):
         now = rospy.Time.now()
+        normal_fresh = self._normal_is_fresh(now)
         level = self.fault.level
         kill = self._kill()
         manual = self._manual()
@@ -187,6 +223,21 @@ class Response(object):
                 self._publish_setpoint(self._land_sp())
                 return
 
+        # OFFBOARD entry is valid only after this arm/control session has
+        # received a fresh Normal setpoint.  IdleHold remains available after
+        # a valid entry (e.g. a mid-flight controller stall), but it can never
+        # bootstrap a later OFFBOARD session from an old flight's position.
+        if not manual and not self._offboard_admitted:
+            if normal_fresh:
+                self._offboard_admitted = True
+                rospy.loginfo("[safety] OFFBOARD admitted with fresh Normal setpoint")
+            else:
+                rospy.logerr_throttle(
+                    1.0,
+                    "[safety] rejecting OFFBOARD: no fresh Normal setpoint in current arm session")
+                self._to_manual(now)
+                return
+
         # NORMAL stream: forward the FRESH planner/control setpoint to the FCU. ALWAYS (even
         # disarmed / POSCTL) so the pilot can ENTER offboard -- PX4 ignores offboard setpoints
         # unless in OFFBOARD, so forwarding pre-offboard is harmless but keeps the stream alive.
@@ -195,7 +246,7 @@ class Response(object):
         # off / done, or control_bridge crash), IdleHold holds the LAST commanded position so
         # the stream stays alive and the drone holds in place instead of PX4 offboard-loss
         # failsafe. Disable with ~idle_hold:=false to restore the failsafe-on-stale behavior.
-        if self.normal is not None and (now - self.normal_stamp).to_sec() < self.normal_timeout:
+        if normal_fresh:
             self._publish_setpoint(self.normal)
         elif self.idle_hold_enabled and self.idle_hold is not None:
             self._publish_setpoint(self.idle_hold)
