@@ -36,14 +36,17 @@ class ConsistencyDiag(object):
         self.last_pair = rospy.Time.now()
 
     def run_diag(self, stat):
-        # No input -> ERROR: can't verify localization integrity (no vrpn or no EKF2 pose to compare).
+        # Missing pairs do not prove a bad estimate: source-specific availability
+        # reporters decide whether one or both streams are gone.  WARN requests a
+        # controlled LAND for a VRPN-only outage; local_position liveness remains
+        # ERROR/KILL if the flight-controller estimate itself disappears.
         now = rospy.Time.now()
         if self.last_pair is None:
-            stat.summary(DiagnosticStatus.ERROR, "no synced pairs")
+            stat.summary(DiagnosticStatus.WARN, "no synced pairs (cannot cross-check)")
             return
         age = (now - self.last_pair).to_sec()
         if age > self.pair_timeout:
-            stat.summary(DiagnosticStatus.ERROR, "stale: no pair %.1fs" % age)
+            stat.summary(DiagnosticStatus.WARN, "stale: no pair %.1fs" % age)
             return
         add_measurement(stat, self.err, "m", warn=self.warn, error=self.error)
         if self.err > self.error:

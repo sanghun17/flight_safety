@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 """L1 diagnosis node: runs OUR per-subsystem reporters -> /diagnostics (OK/WARN/ERROR). Two kinds:
-  - derived verdicts (geofence, consistency): judge only when they HAVE input, neutral otherwise.
+  - derived verdicts (geofence, consistency): boundary/agreement plus conditional availability.
   - source liveness (~liveness/*, e.g. mavros local_position): flags a source that does NOT
     self-report to /diagnostics going silent. (vrpn/mavros plugins self-report from their own nodes.)
 Observe-only -- no actuation.
