@@ -57,6 +57,9 @@ topics:
   - /jax_to_mixtraj/raw_path              # 비교용 raw path
   - /jax_to_mixtraj/bspline_path          # 비교용 b-spline curve
   - /jax/debug_info                       # jax 내부 진단
+  - /jax/dead_zone_scale                  # 현재 pose의 dead-zone uncertainty 배율
+  - /jax/dead_zone_boxes                  # 설정된 dead-zone 경계
+  - /jax/dead_zone_frustum                # live FOV wireframe (scale 1→s_max: green→red)
   # 최종 명령
   - /local_controller/setpoint_raw/local  # control 출력 (MUX 전)
   - /mavros/setpoint_raw/local            # MUX 후 → FCU
