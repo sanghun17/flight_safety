@@ -39,7 +39,12 @@
   </node>
   <!-- EKF2 fused -> /robot/odom (control odom; carries twist). Single producer of
        /robot/odom for real flight. Flows once mavros is up + EKF2 has converged. -->
+  <!-- This relay is a hard dependency of hover_explore_test, traj_server, and
+       control_bridge.  A one-off relay exit previously left planning odom alive
+       while silently removing every control command source.  Respawn only this
+       stateless relay; normal roslaunch shutdown still stops it permanently. -->
   <node pkg="topic_tools" type="relay" name="robot_odom_relay"
+        respawn="true" respawn_delay="1.0"
         launch-prefix="taskset -c $(optenv CPUS_POOL 4-11)"
         args="/mavros/local_position/odom /robot/odom"/>
 
