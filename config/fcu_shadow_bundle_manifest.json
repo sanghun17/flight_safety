@@ -1,0 +1,143 @@
+{
+  "external_sources": {
+    "fastlivo_base_config": {
+      "path": "../../../../ws/fast-livo/src/FAST-LIVO2/config/d435i.yaml",
+      "sha256": "259f4de57beaf29b671a5405882f53f9e25eee68403376c8a0a69e1308691595"
+    },
+    "fastlivo_build_manifest": {
+      "path": "../../../../tools/fastlivo/_campaign_vio_flight_20260814/ground_init_qualification_v1/build_manifest.json",
+      "sha256": "106062f0148e5fd6ab73bad15b2daca9f7685dc5f1f63f073339d366950fc339"
+    },
+    "fastlivo_camera_config": {
+      "path": "../../../../ws/fast-livo/src/FAST-LIVO2/config/camera_d435i.yaml",
+      "sha256": "99c13f2cb2fa7cbcfa744138814f52c73ff20ee230ec065e1bf117767f0d2492"
+    },
+    "hybrid_imu_build_manifest": {
+      "path": "config/hybrid_imu_runtime_build_manifest.json",
+      "sha256": "acca218c18c6a0b91e64832770723aec14a6adb285760af8671d4c938e2f1396"
+    },
+    "hybrid_imu_core": {
+      "path": "../../../../modules/sensor/realsense-d435i/hybrid_imu_core.py",
+      "sha256": "5a6b90d4259e574e14e39253dbc722200d3a90d18c691446486eda0dac6c5cbc"
+    },
+    "hybrid_imu_launch": {
+      "path": "../../../../modules/sensor/realsense-d435i/d435i.launch",
+      "sha256": "72fe9fa8088093ac9d5cf6b05f72381c553e3f46a00210f89eb39ceda5d626a3"
+    },
+    "hybrid_imu_node": {
+      "path": "../../../../modules/sensor/realsense-d435i/hybrid_imu.py",
+      "sha256": "9c5127ae7b4bb6d3d77ad44c6617cb25081db769627c29c6393eb107ae4b2153"
+    },
+    "mavparam_entrypoint": {
+      "path": "../../../risk-aware/src/risk_aware_planning/mavros/mavros/scripts/mavparam",
+      "sha256": "6d89d04a8bb5b377be1a47319fe80b3d7d12259379eae717a0d56e4b588be1b6"
+    },
+    "mavparam_python_interpreter": {
+      "path": "../../../../../../../usr/bin/python3.8",
+      "sha256": "298a9e830ed52f36c299427565485d717d1ce0179c0597cc16560513eb780b06"
+    },
+    "mavros_build_cmake_cache": {
+      "path": "../../../risk-aware/build/mavros/CMakeCache.txt",
+      "sha256": "52671153158d3363b5bdb8a88b738ca09a124b9a77ee55a68de1a178381b04fa"
+    },
+    "mavros_build_marker": {
+      "path": "../../../risk-aware/build/.built_by",
+      "sha256": "be4296543a7daebea79cc05a2b03e0af0b32371364188cdfa30692a35b261a98"
+    },
+    "mavros_param_build_manifest": {
+      "path": "config/mavros_param_runtime_build_manifest.json",
+      "sha256": "703290e95ea5dbac9711c6ec102b42a8560941e1c74ab745c173e809ffdff817"
+    },
+    "mavros_param_plugin": {
+      "path": "../../../risk-aware/src/risk_aware_planning/mavros/mavros/src/plugins/param.cpp",
+      "sha256": "33da5ab66a72c5ad3d73c2f149819b6de745fb19523ada13c8d30af5594ceb73"
+    },
+    "mavros_param_plugin_binary": {
+      "path": "../../../risk-aware/devel/.private/mavros/lib/libmavros_plugins.so",
+      "sha256": "d46ff86b63e9b757cc9bf47adec28846b4a3ed6134f1c8636d34e0c5cff1ff6f"
+    },
+    "mavros_param_python": {
+      "path": "../../../risk-aware/src/risk_aware_planning/mavros/mavros/src/mavros/param.py",
+      "sha256": "7aeaa7898e929430c9d614a33df82467e60d157e18734cdbbf714a54332e2a12"
+    },
+    "mavros_param_runtime_module": {
+      "path": "../../../../../../../opt/ros/noetic/lib/python3/dist-packages/mavros/param.py",
+      "sha256": "7aeaa7898e929430c9d614a33df82467e60d157e18734cdbbf714a54332e2a12"
+    },
+    "mavros_param_source_tree_manifest": {
+      "path": "config/mavros_param_source_tree_manifest.json",
+      "sha256": "3caa2282e62ddb8a127b9c8a65d9d4c75eddd6a6175dc1eb76d4c59eba78c7c6"
+    },
+    "mavros_timesync_config": {
+      "path": "../../../risk-aware/src/risk_aware_planning/mavros/mavros/launch/px4_config.yaml",
+      "sha256": "f907e6d0af2455ef5cc8b07f718fc63f4f6bebb5599720a53cbe2f4b52df97ae"
+    },
+    "mavros_timesync_plugin": {
+      "path": "../../../risk-aware/src/risk_aware_planning/mavros/mavros/src/plugins/sys_time.cpp",
+      "sha256": "86de7ee79e6f0f92fe1138c0f851104117ec47da4b83ec8a3c39bdb9c3997ecf"
+    },
+    "selected_candidate_overlay": {
+      "path": "../../../../tools/fastlivo/vio_ground_phase_b_candidate_development.yaml",
+      "sha256": "8c651f57273ce1d3a8a5f1b5d5cf057cbf578f08491e34b09bfb74963b625310"
+    }
+  },
+  "file_roles": {
+    "append_only_evidence": {
+      "path": "src/flight_safety/append_only_evidence.py",
+      "sha256": "f39fc90cb2bc51a841b2522c126021d0b5428bd2d1240c0061f65aadf41077e6"
+    },
+    "collector_core": {
+      "path": "src/flight_safety/fcu_audit_receipt.py",
+      "sha256": "064431f2ce9c28589be1189ed792f5c7070bcf74079700bd7d89b272cd04ceb5"
+    },
+    "collector_entrypoint": {
+      "path": "scripts/fcu_audit_receipt.py",
+      "sha256": "8e5ab1a1b91e622ebdd403b5dd462645656c437d8f8f350d64658141891a727d"
+    },
+    "fcu_audit_config": {
+      "path": "config/fcu_audit_read_only.yaml",
+      "sha256": "fcb902a789fe8a36cd2513048b84c2e63e1f9b454071a0a11913964892e00d64"
+    },
+    "metric_core": {
+      "path": "src/flight_safety/vio_shadow.py",
+      "sha256": "e83683a1e34f1376c7f3cfbcdf5585ee456d4a998df156510c5adcd2758d7929"
+    },
+    "shadow_entrypoint": {
+      "path": "scripts/vio_shadow_preflight.py",
+      "sha256": "5d395b0370b5f257f9712bc38f55e43839bda28c1d60e9340a4c1225bcd8390b"
+    },
+    "timesync_trace_entrypoint": {
+      "path": "scripts/fcu_timesync_trace_capture.py",
+      "sha256": "ab2331ae1bd8cdd24b092d85d9dfd239af0abc865715de56c848ce66949ebc41"
+    },
+    "trace_entrypoint": {
+      "path": "scripts/fcu_trace_capture.py",
+      "sha256": "66bade6603620dd899cc7a8a398213ff51b46bec53f69c9112baa0cc56e99802"
+    }
+  },
+  "files": {
+    "CMakeLists.txt": "bd8d8ff241de54c1b9c35e2ae136c9da899ae34059bf3995474b8a1790d40ac2",
+    "README.md": "597a12e0934b0ad6d9555e2c8c08a5342899c7e41b751062878aabd2a022fe83",
+    "config/fcu_audit_read_only.yaml": "fcb902a789fe8a36cd2513048b84c2e63e1f9b454071a0a11913964892e00d64",
+    "config/hybrid_imu_runtime_build_manifest.json": "acca218c18c6a0b91e64832770723aec14a6adb285760af8671d4c938e2f1396",
+    "config/mavros_param_runtime_build_manifest.json": "703290e95ea5dbac9711c6ec102b42a8560941e1c74ab745c173e809ffdff817",
+    "config/mavros_param_source_tree_manifest.json": "3caa2282e62ddb8a127b9c8a65d9d4c75eddd6a6175dc1eb76d4c59eba78c7c6",
+    "config/vio_shadow_preflight.yaml": "e6fa60a7d8617f2efe95437d6784959310b2cc819b4124a734c667c7bc180d4e",
+    "docs/vio_shadow_preflight.md": "e39d6d6262e19b553d0b28d759a456ef88920d277b7ece3b3a856b20d4075709",
+    "launch/vio_shadow_preflight.launch": "d738d4d61328b2bd14c4756733e6ac35732a48d539c51af4c9c96271fe4946c8",
+    "package.xml": "7a2773cf915518ea4dd0e818e76d97fd0ab3981dcce4a7c78adddd69f606538b",
+    "scripts/fcu_audit_receipt.py": "8e5ab1a1b91e622ebdd403b5dd462645656c437d8f8f350d64658141891a727d",
+    "scripts/fcu_timesync_trace_capture.py": "ab2331ae1bd8cdd24b092d85d9dfd239af0abc865715de56c848ce66949ebc41",
+    "scripts/fcu_trace_capture.py": "66bade6603620dd899cc7a8a398213ff51b46bec53f69c9112baa0cc56e99802",
+    "scripts/vio_shadow_preflight.py": "5d395b0370b5f257f9712bc38f55e43839bda28c1d60e9340a4c1225bcd8390b",
+    "src/flight_safety/append_only_evidence.py": "f39fc90cb2bc51a841b2522c126021d0b5428bd2d1240c0061f65aadf41077e6",
+    "src/flight_safety/fcu_audit_receipt.py": "064431f2ce9c28589be1189ed792f5c7070bcf74079700bd7d89b272cd04ceb5",
+    "src/flight_safety/vio_shadow.py": "e83683a1e34f1376c7f3cfbcdf5585ee456d4a998df156510c5adcd2758d7929",
+    "test/test_fcu_audit_receipt.py": "f2ca2e89495612980cf6db5eb4a7c745f33cd9e3477aec653756cb4e9cab5720",
+    "test/test_fcu_shadow_bundle_manifest.py": "8064bfae17665622ed5a39d8aa7e33da2474524a5adccdeba2912cd14a0da8d6",
+    "test/test_vio_shadow.py": "3a8d7508bb6dfdcc581124c1b12d2b99d51fc1ea5d35e0a03a88b72eb7140232",
+    "test/test_vio_shadow_launch.py": "1beea6a75ef131673cfe3a4a1bd20fb230e9cfacecb9a5c765fd5175803136d8"
+  },
+  "schema": "flight_safety/fcu_shadow_source_bundle/v3",
+  "self_hash_policy": "manifest omitted from files to avoid recursion; receipt hashes manifest artifact"
+}

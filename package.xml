@@ -12,7 +12,10 @@
   <exec_depend>message_runtime</exec_depend>
 
   <exec_depend>rospy</exec_depend>
+  <exec_depend>rosgraph</exec_depend>
   <exec_depend>geometry_msgs</exec_depend>
+  <exec_depend>nav_msgs</exec_depend>
+  <exec_depend>sensor_msgs</exec_depend>
   <exec_depend>message_filters</exec_depend>
   <exec_depend>diagnostic_msgs</exec_depend>
   <exec_depend>mavros_msgs</exec_depend>

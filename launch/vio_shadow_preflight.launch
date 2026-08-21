@@ -1,0 +1,16 @@
+<launch>
+  <!-- Subscriber-only preflight. This launch does not include safety.launch,
+       response.launch, estimation_mux.launch, MAVROS outputs, or any relay. -->
+  <arg name="config" default="$(find flight_safety)/config/vio_shadow_preflight.yaml"/>
+  <arg name="output_root"/>
+  <arg name="duration_s" default="60.0"/>
+  <arg name="run_id" default=""/>
+
+  <node pkg="flight_safety" type="vio_shadow_preflight.py"
+        name="vio_shadow_preflight" output="screen" required="true">
+    <rosparam param="profile" command="load" file="$(arg config)"/>
+    <param name="output_root" value="$(arg output_root)"/>
+    <param name="duration_s" value="$(arg duration_s)"/>
+    <param name="run_id" value="$(arg run_id)"/>
+  </node>
+</launch>

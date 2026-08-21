@@ -28,7 +28,26 @@ catkin_install_python(PROGRAMS
   scripts/monitor_node.py
   scripts/response_node.py
   scripts/recorder_node.py
+  scripts/fcu_audit_receipt.py
+  scripts/fcu_trace_capture.py
+  scripts/fcu_timesync_trace_capture.py
+  scripts/vio_shadow_preflight.py
   DESTINATION ${CATKIN_PACKAGE_BIN_DESTINATION})
 
 install(DIRECTORY include/${PROJECT_NAME}/
   DESTINATION ${CATKIN_PACKAGE_INCLUDE_DESTINATION})
+
+install(FILES
+  config/fcu_audit_read_only.yaml
+  config/fcu_shadow_bundle_manifest.json
+  config/hybrid_imu_runtime_build_manifest.json
+  config/mavros_param_runtime_build_manifest.json
+  config/mavros_param_source_tree_manifest.json
+  config/vio_shadow_preflight.yaml
+  DESTINATION ${CATKIN_PACKAGE_SHARE_DESTINATION}/config)
+
+install(FILES launch/vio_shadow_preflight.launch
+  DESTINATION ${CATKIN_PACKAGE_SHARE_DESTINATION}/launch)
+
+install(FILES docs/vio_shadow_preflight.md
+  DESTINATION ${CATKIN_PACKAGE_SHARE_DESTINATION}/docs)

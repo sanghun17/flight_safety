@@ -1,0 +1,219 @@
+# Subscriber-only diagnostic profile. No relay, MAVROS service, setpoint, or
+# flight-authority path is present. Blank identity/status topics intentionally
+# keep the current estimator/hybrid integration FAIL until explicit interfaces exist.
+safety_invariants:
+  mode: shadow_only
+  allow_ros_publish: false
+  allow_fcu_actuation: false
+  fcu_output_topics: []
+
+streams:
+  - name: correction_pose
+    topic: /aft_mapped_to_body_correction_pose_cov
+    message_type: geometry_msgs/PoseWithCovarianceStamped
+    queue_size: 1000
+    expected_frame_id: odom
+    expected_child_frame_id: ""
+    min_samples: 30
+    min_rate_hz: 8.0
+    max_gap_s: 0.25
+    max_idle_s: 0.25
+    max_abs_header_latency_s: 0.50
+    max_first_sample_delay_s: 0.50
+    min_window_coverage_ratio: 0.95
+    covariance_symmetry_tolerance: 1.0e-9
+    covariance_psd_tolerance: 1.0e-9
+    covariance_min_diagonal: 1.0e-12
+    covariance_min_eigenvalue: 1.0e-12
+    covariance_max_diagonal: 1000.0
+    covariance_max_abs: 1000.0
+    quaternion_norm_tolerance: 1.0e-3
+    require_pose_payload: true
+    require_twist_payload: false
+    require_imu_payload: false
+    require_imu_orientation: false
+    require_imu_covariance: false
+    require_pose_covariance: true
+    require_twist_covariance: false
+
+  - name: propagated_odometry
+    topic: /aft_mapped_to_body_imu_propagated
+    message_type: nav_msgs/Odometry
+    queue_size: 4000
+    expected_frame_id: odom
+    expected_child_frame_id: base_link
+    min_samples: 100
+    min_rate_hz: 30.0
+    max_gap_s: 0.05
+    max_idle_s: 0.10
+    max_abs_header_latency_s: 0.20
+    max_first_sample_delay_s: 0.50
+    min_window_coverage_ratio: 0.95
+    covariance_symmetry_tolerance: 1.0e-9
+    covariance_psd_tolerance: 1.0e-9
+    covariance_min_diagonal: 1.0e-12
+    covariance_min_eigenvalue: 1.0e-12
+    covariance_max_diagonal: 1000.0
+    covariance_max_abs: 1000.0
+    quaternion_norm_tolerance: 1.0e-3
+    require_pose_payload: true
+    require_twist_payload: true
+    require_imu_payload: false
+    require_imu_orientation: false
+    require_imu_covariance: false
+    require_pose_covariance: true
+    require_twist_covariance: true
+
+  # The selected low-rate candidate consumes this stream. Rate/stale-only
+  # readiness is insufficient, so its output and readiness diagnostics are
+  # independently gated below.
+  - name: hybrid_imu_output
+    topic: /camera/imu_hybrid
+    message_type: sensor_msgs/Imu
+    queue_size: 4000
+    expected_frame_id: camera_depth_optical_frame
+    expected_child_frame_id: ""
+    min_samples: 300
+    min_rate_hz: 150.0
+    max_gap_s: 0.02
+    max_idle_s: 0.05
+    max_abs_header_latency_s: 0.20
+    max_first_sample_delay_s: 0.50
+    min_window_coverage_ratio: 0.95
+    covariance_symmetry_tolerance: 1.0e-9
+    covariance_psd_tolerance: 1.0e-9
+    covariance_min_diagonal: 1.0e-12
+    covariance_min_eigenvalue: 1.0e-12
+    covariance_max_diagonal: 1000.0
+    covariance_max_abs: 1000.0
+    quaternion_norm_tolerance: 1.0e-3
+    require_pose_payload: false
+    require_twist_payload: false
+    require_imu_payload: true
+    require_imu_orientation: true
+    require_imu_covariance: true
+    require_pose_covariance: false
+    require_twist_covariance: false
+
+identity:
+  # One DiagnosticArray status must atomically carry the session, reset epoch,
+  # correction sequence/stamp plus selected config/effective/native producer
+  # hashes. Separate scalar topics cannot establish a one-to-one correction
+  # and running-producer identity and are never accepted.
+  status_topic: ""
+  status_message_type: diagnostic_msgs/DiagnosticArray
+  status_name: fast_livo/identity_join
+  status_schema: flight_safety/fastlivo_identity_join/v1
+  min_samples: 30
+  max_idle_s: 0.50
+  max_abs_header_latency_s: 0.20
+
+linkage:
+  correction_stream: correction_pose
+  propagated_stream: propagated_odometry
+  max_header_delta_s: 0.02
+  max_status_arrival_delta_s: 0.05
+  max_identity_correction_stamp_delta_s: 0.001
+  require_typed_identity_join: true
+
+hybrid_imu:
+  output_stream: hybrid_imu_output
+  ready_topic: /camera/imu_hybrid/ready
+  diagnostics_topic: /camera/imu_hybrid/diagnostics
+  diagnostic_name: d435i_tools/hybrid_imu
+  diagnostic_max_gap_s: 0.25
+  diagnostic_max_idle_s: 0.25
+  # Current launch has neither mapping-start binding nor explicit proof that
+  # D435 and FCU header stamps share the claimed comparison domain. Empty
+  # topics therefore fail closed; do not infer either fact from wall time.
+  mapping_start_topic: ""
+  mapping_start_message_type: std_msgs/String
+  require_mapping_start_after_ready: true
+  ready_stable_before_mapping_s: 1.0
+  ready_diagnostic_samples_before_mapping: 5
+  required_fault_counter_keys:
+    - invalid_fcu
+    - fcu_stamp_rollback
+    - invalid_d435
+    - d435_stamp_rollback
+    - drop_pending_overflow
+    - drop_wait_timeout
+    - drop_outside_before_fcu
+    - drop_nonpositive_gap
+    - drop_gap_too_large
+    - drop_output_stamp_rollback
+  timesync_domain_topic: ""
+  timesync_domain_message_type: diagnostic_msgs/DiagnosticArray
+  timesync_domain_status_name: d435i_tools/clock_domain
+  timesync_domain_schema: flight_safety/d435_fcu_clock_domain/v1
+  required_timesync_domain: D435_HEADER_AND_FCU_IMU_COMMON_ROS_TIME_VERIFIED
+  required_d435_clock_source: D435_HEADER_ROS_TIME
+  required_fcu_clock_source: FCU_MAVROS_SYNCHRONIZED_ROS_TIME
+  timesync_measurement_max_age_s: 0.05
+  timesync_max_abs_offset_s: 0.05
+  timesync_source_roles:
+    hybrid_imu_node_sha256: hybrid_imu_node
+    hybrid_imu_core_sha256: hybrid_imu_core
+    d435_launch_sha256: hybrid_imu_launch
+    mavros_timesync_plugin_sha256: mavros_timesync_plugin
+    publisher_executable_sha256: clock_domain_publisher_executable
+    publisher_source_sha256: clock_domain_publisher_source
+    publisher_build_manifest_sha256: clock_domain_publisher_build_manifest
+  require_timesync_domain: true
+
+producer_provenance:
+  # All blank runtime paths are intentional qualification blockers. A PASS
+  # requires the selected Phase-B overlay (online_intrinsics_en=false,
+  # outlier=600, high-rate=false), base
+  # config, exact merged live ROS params, camera_d435i.yaml loaded under the
+  # /laserMapping private namespace, and the executable/libraries/source
+  # set named by the qualified build manifest.
+  runtime_param_namespace: ""
+  runtime_camera_param_namespace: ""
+  executable_path: ""
+  dynamic_library_paths:
+    libimu_proc.so: ""
+    liblaser_mapping.so: ""
+    liblio.so: ""
+    libpre.so: ""
+    libvio.so: ""
+  source_root: ""
+  required_build_manifest_schema: fastlivo_vio_postfix_build_manifest/v1
+  require_exact_effective_params: true
+  # Only exact JSON-pointer-like paths may be ignored. Wildcards and root
+  # suppression are rejected; the qualified default permits no extras.
+  effective_param_ephemeral_allowlist: []
+  private_camera_param_ephemeral_allowlist: []
+
+evidence:
+  require_source_identity: true
+  max_duration_overrun_s: 1.0
+  source_paths:
+    shadow_entrypoint: ""
+    bundle_manifest: ""
+    hybrid_imu_node: ""
+    hybrid_imu_core: ""
+    hybrid_imu_launch: ""
+    hybrid_imu_build_manifest: ""
+    clock_domain_publisher_executable: ""
+    clock_domain_publisher_source: ""
+    clock_domain_publisher_build_manifest: ""
+    mavros_timesync_plugin: ""
+    selected_candidate_overlay: ""
+    fastlivo_base_config: ""
+    fastlivo_camera_config: ""
+    fastlivo_build_manifest: ""
+  source_manifest_paths:
+    shadow_entrypoint: scripts/vio_shadow_preflight.py
+    hybrid_imu_node: ../../../../modules/sensor/realsense-d435i/hybrid_imu.py
+    hybrid_imu_core: ../../../../modules/sensor/realsense-d435i/hybrid_imu_core.py
+    hybrid_imu_launch: ../../../../modules/sensor/realsense-d435i/d435i.launch
+    hybrid_imu_build_manifest: config/hybrid_imu_runtime_build_manifest.json
+    clock_domain_publisher_executable: external/unqualified/clock_domain_publisher
+    clock_domain_publisher_source: external/unqualified/clock_domain_publisher.py
+    clock_domain_publisher_build_manifest: external/unqualified/clock_domain_publisher_build.json
+    mavros_timesync_plugin: ../../../risk-aware/src/risk_aware_planning/mavros/mavros/src/plugins/sys_time.cpp
+    selected_candidate_overlay: ../../../../tools/fastlivo/vio_ground_phase_b_candidate_development.yaml
+    fastlivo_base_config: ../../../../ws/fast-livo/src/FAST-LIVO2/config/d435i.yaml
+    fastlivo_camera_config: ../../../../ws/fast-livo/src/FAST-LIVO2/config/camera_d435i.yaml
+    fastlivo_build_manifest: ../../../../tools/fastlivo/_campaign_vio_flight_20260814/ground_init_qualification_v1/build_manifest.json

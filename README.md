@@ -4,6 +4,13 @@
 
 설계: [`docs/flight_safety_architecture.md`](docs/flight_safety_architecture.md)
 
+Standalone VIO의 FCU read-only audit와 완전 비개입 shadow preflight는
+[`docs/vio_shadow_preflight.md`](docs/vio_shadow_preflight.md)를 따른다. 두 도구의
+PASS는 비행 허가가 아니며 기존 `safety.launch` 실행 경로와 기본값을 바꾸지 않는다.
+v3 기본 profile은 현재 없는 typed estimator identity join, stable-ready 뒤 nonempty mapping-start,
+exact hybrid fault counters, source-hashed D435↔FCU clock-domain status 및 selected Phase-B
+overlay/base/effective-params/native-build 증거를 required로 두므로 의도적으로 FAIL한다.
+
 ## 구성 요소
 
 - **`TopicMonitor`** (general) — `(topic, checks, thresholds)`만 주면 감지:

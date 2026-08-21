@@ -1,0 +1,6 @@
+{
+  "hybrid_imu_core_sha256": "5a6b90d4259e574e14e39253dbc722200d3a90d18c691446486eda0dac6c5cbc",
+  "hybrid_imu_launch_sha256": "72fe9fa8088093ac9d5cf6b05f72381c553e3f46a00210f89eb39ceda5d626a3",
+  "hybrid_imu_node_sha256": "9c5127ae7b4bb6d3d77ad44c6617cb25081db769627c29c6393eb107ae4b2153",
+  "schema": "flight_safety/hybrid_imu_runtime_build/v1"
+}

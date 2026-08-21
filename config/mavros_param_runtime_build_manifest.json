@@ -1,0 +1,15 @@
+{
+  "build_marker_sha256": "be4296543a7daebea79cc05a2b03e0af0b32371364188cdfa30692a35b261a98",
+  "cmake_cache_sha256": "52671153158d3363b5bdb8a88b738ca09a124b9a77ee55a68de1a178381b04fa",
+  "mavparam_entrypoint_sha256": "6d89d04a8bb5b377be1a47319fe80b3d7d12259379eae717a0d56e4b588be1b6",
+  "mavparam_python_interpreter_sha256": "298a9e830ed52f36c299427565485d717d1ce0179c0597cc16560513eb780b06",
+  "mavros_package_path": "/home/ml/drone-stack-docker/ws/risk-aware/src/risk_aware_planning/mavros/mavros",
+  "mavros_param_plugin_sha256": "33da5ab66a72c5ad3d73c2f149819b6de745fb19523ada13c8d30af5594ceb73",
+  "mavros_param_python_sha256": "7aeaa7898e929430c9d614a33df82467e60d157e18734cdbbf714a54332e2a12",
+  "mavros_param_runtime_module_sha256": "7aeaa7898e929430c9d614a33df82467e60d157e18734cdbbf714a54332e2a12",
+  "mavros_timesync_config_sha256": "f907e6d0af2455ef5cc8b07f718fc63f4f6bebb5599720a53cbe2f4b52df97ae",
+  "mavros_timesync_plugin_sha256": "86de7ee79e6f0f92fe1138c0f851104117ec47da4b83ec8a3c39bdb9c3997ecf",
+  "param_plugin_binary_sha256": "d46ff86b63e9b757cc9bf47adec28846b4a3ed6134f1c8636d34e0c5cff1ff6f",
+  "schema": "flight_safety/mavros_param_runtime_build/v1",
+  "source_tree_manifest_sha256": "3caa2282e62ddb8a127b9c8a65d9d4c75eddd6a6175dc1eb76d4c59eba78c7c6"
+}

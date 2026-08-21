@@ -1,0 +1,129 @@
+# FCU-persistent read-only audit.  `mavparam dump -f` refreshes the MAVROS ROS
+# parameter cache, so this is not advertised as a zero-side-effect operation.
+# Missing provenance or a missing runtime sample yields INCOMPLETE/FAIL, never PASS.
+mavros_namespace: /mavros
+command_timeout_s: 15.0
+param_timeout_s: 60.0
+min_param_count: 100
+trace_startup_s: 2.0
+trace_tail_s: 2.0
+trace_connection_timeout_s: 10.0
+
+state_guard:
+  max_age_s: 1.5
+  max_future_s: 0.05
+  max_gap_s: 2.0
+  during_min_samples: 3
+
+identity:
+  required_autopilot: 12       # MAV_AUTOPILOT_PX4
+  require_vehicle_uid: true
+  required_mavros_version: 1.17.0
+  # These must be filled with absolute, regular-file paths from the actual
+  # deployed bundle. Blank defaults intentionally keep the audit INCOMPLETE.
+  source_paths:
+    collector_entrypoint: ""
+    trace_entrypoint: ""
+    timesync_trace_entrypoint: ""
+    bundle_manifest: ""
+    mavparam_entrypoint: ""
+    mavparam_python_interpreter: ""
+    mavros_param_python: ""
+    mavros_param_runtime_module: ""
+    mavros_param_plugin: ""
+    mavros_param_plugin_binary: ""
+    mavros_param_source_tree_manifest: ""
+    mavros_param_build_manifest: ""
+    mavros_build_cmake_cache: ""
+    mavros_build_marker: ""
+    mavros_timesync_plugin: ""
+    mavros_timesync_config: ""
+    # Stock MAVROS 1.17 has no typed accepted-filter sequence publisher. These
+    # remain blank until a separately qualified publisher source/binary/build
+    # is supplied; blank values intentionally make the receipt INCOMPLETE and
+    # also prevent a force pull before full source identity is available.
+    timesync_acceptance_publisher_source: ""
+    timesync_acceptance_publisher_binary: ""
+    timesync_acceptance_build_manifest: ""
+  # Logical paths must match the manifest role records exactly; hash-only
+  # matches under a different role/path are rejected.
+  source_manifest_paths:
+    fcu_audit_config: config/fcu_audit_read_only.yaml
+    collector_entrypoint: scripts/fcu_audit_receipt.py
+    trace_entrypoint: scripts/fcu_trace_capture.py
+    timesync_trace_entrypoint: scripts/fcu_timesync_trace_capture.py
+    collector_core: src/flight_safety/fcu_audit_receipt.py
+    append_only_evidence: src/flight_safety/append_only_evidence.py
+    mavparam_entrypoint: ../../../risk-aware/src/risk_aware_planning/mavros/mavros/scripts/mavparam
+    mavparam_python_interpreter: ../../../../../../../usr/bin/python3.8
+    mavros_param_python: ../../../risk-aware/src/risk_aware_planning/mavros/mavros/src/mavros/param.py
+    mavros_param_runtime_module: ../../../../../../../opt/ros/noetic/lib/python3/dist-packages/mavros/param.py
+    mavros_param_plugin: ../../../risk-aware/src/risk_aware_planning/mavros/mavros/src/plugins/param.cpp
+    mavros_param_plugin_binary: ../../../risk-aware/devel/.private/mavros/lib/libmavros_plugins.so
+    mavros_param_source_tree_manifest: config/mavros_param_source_tree_manifest.json
+    mavros_param_build_manifest: config/mavros_param_runtime_build_manifest.json
+    mavros_build_cmake_cache: ../../../risk-aware/build/mavros/CMakeCache.txt
+    mavros_build_marker: ../../../risk-aware/build/.built_by
+    mavros_timesync_plugin: ../../../risk-aware/src/risk_aware_planning/mavros/mavros/src/plugins/sys_time.cpp
+    mavros_timesync_config: ../../../risk-aware/src/risk_aware_planning/mavros/mavros/launch/px4_config.yaml
+    timesync_acceptance_publisher_source: external/unqualified/timesync_acceptance_publisher.cpp
+    timesync_acceptance_publisher_binary: external/unqualified/timesync_acceptance_publisher
+    timesync_acceptance_build_manifest: external/unqualified/timesync_acceptance_build.json
+
+timesync:
+  samples: 40
+  tail_samples: 20
+  diagnostic_samples: 2
+  diagnostic_name: "mavros: Time Sync"
+  diagnostic_max_age_s: 2.0
+  diagnostic_max_gap_s: 2.0
+  max_age_s: 1.0
+  max_gap_s: 0.5
+  max_abs_residual_ns: 2000000
+  # Diagnostic observation counts are health telemetry only and never prove
+  # accepted filter convergence. PASS additionally requires this dedicated,
+  # exact typed/source-bound accepted-update sequence.
+  acceptance_topic: /flight_safety/mavros_timesync_accepted_sequence
+  acceptance_samples: 20
+  acceptance_status_name: "flight_safety: MAVROS Time Sync Acceptance"
+  acceptance_max_age_s: 1.0
+  acceptance_max_gap_s: 0.5
+  acceptance_link_max_delay_s: 0.5
+  acceptance_link_max_future_s: 0.05
+  max_future_s: 0.05
+  connection_timeout_s: 10.0
+  capture_timeout_s: 15.0
+  tail_grace_s: 0.5
+  # Every key must exist with this exact value in both the live ROS parameter
+  # tree and the supplied MAVROS timesync config source. Defaults hidden only
+  # in C++ are not accepted as effective runtime evidence.
+  effective_config:
+    conn/timesync_rate: 10.0
+    time/timesync_mode: MAVLINK
+    time/timesync_alpha_initial: 0.05
+    time/timesync_beta_initial: 0.05
+    time/timesync_alpha_final: 0.003
+    time/timesync_beta_final: 0.003
+    time/convergence_window: 500
+    time/max_rtt_sample: 10
+    time/max_deviation_sample: 100
+    time/max_consecutive_high_rtt: 5
+    time/max_consecutive_high_deviation: 5
+    time/publish_sim_time: false
+
+estimator_status:
+  samples: 10
+  max_age_s: 1.0
+  max_gap_s: 1.0
+  required_true_flags:
+    - attitude_status_flag
+    - velocity_horiz_status_flag
+    - velocity_vert_status_flag
+    - pos_horiz_rel_status_flag
+  required_false_flags:
+    - const_pos_mode_status_flag
+    - gps_glitch_status_flag
+    - accel_error_status_flag
+  vertical_position_any_true:
+    - pos_vert_abs_status_flag
+    - pos_vert_agl_status_flag

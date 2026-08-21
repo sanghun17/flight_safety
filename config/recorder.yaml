@@ -49,7 +49,9 @@ topics:
   - /robot/odom                           # control odom
   - /robot/odom_planning                  # planning odom (jax 입력)
   - /mavros/local_position/odom           # EKF2 fused
-  - /aft_mapped_to_body_imu_propagated   # fast-livo world twist (jax context vel 소스 — 2026-07-10 오프라인 분석용 추가)
+  - /aft_mapped_to_body_imu_propagated   # body twist + VIO-local pose (planning source)
+  - /aft_mapped_to_body_imu_propagated_world_twist # TwistStamped in odom/world axes (JAX context)
+  - /aft_mapped_to_body_correction_pose_cov        # corrected pose covariance at LIO/VIO epochs
   # 궤적: b-spline 전 → 후 비교
   - /jax/optimal_trajectory               # b-spline 전 (raw JAX)
   - /planning/trajectory                  # MixTraj (b-spline 제어점)
