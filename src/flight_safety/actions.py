@@ -15,12 +15,14 @@ class MavrosActions(object):
     def kill(self):
         """Force-disarm in flight (kill switch). DESTRUCTIVE: motors stop, vehicle drops."""
         try:
-            self._command(broadcast=False, command=MAV_CMD_COMPONENT_ARM_DISARM,
+            result = self._command(broadcast=False, command=MAV_CMD_COMPONENT_ARM_DISARM,
                           confirmation=0, param1=0.0, param2=float(FORCE_MAGIC),
                           param3=0.0, param4=0.0, param5=0.0, param6=0.0, param7=0.0)
-            rospy.logfatal("[safety] KILL: force-disarm sent")
+            rospy.logfatal("[safety] KILL: force-disarm acknowledgement success=%s", result.success)
+            return bool(result.success)
         except rospy.ServiceException as e:
             rospy.logerr("[safety] kill failed: %s", e)
+            return False
 
     def set_mode(self, mode):
         try:

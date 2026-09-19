@@ -1,7 +1,9 @@
 <launch>
+  <arg name="allow_external_termination" default="false"/>
   <!-- L3 response/mux === KILL AUTHORITY ===. Consumes /flight_safety/fault (run observe first). -->
   <arg name="config" default="$(find flight_safety)/config/response.yaml"/>
   <node pkg="flight_safety" type="response_node.py" name="flight_safety_response" output="screen">
     <rosparam command="load" file="$(arg config)"/>
+    <param name="allow_external_termination" value="$(arg allow_external_termination)"/>
   </node>
 </launch>

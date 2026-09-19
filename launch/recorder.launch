@@ -1,7 +1,9 @@
 <launch>
   <!-- Arm-triggered rosbag recorder: ARM -> record the configured topics, DISARM -> stop+finalize. -->
   <arg name="config" default="$(find flight_safety)/config/recorder.yaml"/>
-  <node pkg="flight_safety" type="recorder_node.py" name="flight_safety_recorder" output="screen">
+  <arg name="cpu_affinity" default="$(optenv CPUS_RECORDER)"/>
+  <node pkg="flight_safety" type="recorder_node.py" name="flight_safety_recorder" output="screen"
+        launch-prefix="$(eval 'taskset -c '+arg('cpu_affinity') if arg('cpu_affinity') else '')">
     <env name="PYTHONUNBUFFERED" value="1"/>   <!-- fd1=pipe under roslaunch -> block-buffered; unbuffer so ARM/STOP/webcam lines hit the console live -->
     <rosparam command="load" file="$(arg config)"/>
   </node>

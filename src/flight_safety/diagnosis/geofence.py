@@ -6,6 +6,7 @@ Boundary + margin are config (diagnosis.yaml geofence.box / margin_m). The rviz 
 wireframe box, status-colored (green / yellow-red blink / red / gray). The fallback
 is availability evidence only; it is never used to judge the geofence box.
 """
+import math
 import rospy
 from geometry_msgs.msg import PoseStamped, Point
 from diagnostic_msgs.msg import DiagnosticStatus
@@ -24,6 +25,13 @@ _BLINK_HZ, _LINE_W, _ALPHA, _MARKER_TOPIC = 3.0, 0.02, 0.9, "/flight_safety/geof
 class GeofenceDiag(object):
     def __init__(self, cfg):
         self.box = cfg["box"]                              # criteria = OptiTrack pose (cfg["source"]), NOT mavros
+        self.axes = tuple(cfg.get("enabled_axes", _AXES))
+        if not self.axes or len(set(self.axes)) != len(self.axes) or any(ax not in _AXES for ax in self.axes):
+            raise ValueError("geofence enabled_axes must be a nonempty subset of x,y,z")
+        for ax in self.axes:
+            bounds = self.box.get(ax, ())
+            if len(bounds) != 2 or not all(math.isfinite(v) for v in bounds) or bounds[0] >= bounds[1]:
+                raise ValueError("invalid geofence bounds for " + ax)
         self.margin = float(cfg.get("margin_m", 0.3))
         self.timeout = float(cfg.get("pose_timeout_s", 0.2))
         self.fallback_timeout = float(cfg.get("fallback_timeout_s", 0.5))
@@ -58,6 +66,7 @@ class GeofenceDiag(object):
             return UNKNOWN, None
         margin = float("inf")
         for i, ax in enumerate(_AXES):
+            if ax not in self.axes:continue
             lo, hi = self.box[ax]
             margin = min(margin, self.pos[i] - lo, hi - self.pos[i])
         if margin < 0.0:
@@ -69,6 +78,7 @@ class GeofenceDiag(object):
         st, margin = self.status(now)
         if self.pos is not None:
             stat.add("pos_xyz_m", "[%.2f %.2f %.2f]" % self.pos)
+        stat.add("enabled_axes", ",".join(self.axes))
         stat.add("status", st)
         if margin is not None:
             add_measurement(stat, margin, "m", warn=self.margin, error=0.0)
@@ -96,6 +106,14 @@ class GeofenceDiag(object):
         return [(corners[a], corners[b]) for a in corners for b in corners
                 if a < b and sum(u != v for u, v in zip(a, b)) == 1]
 
+    def _fence_edges(self):
+        # Disabled dimensions are unbounded, not ceilings/floors. Draw the
+        # remaining boundary at the current pose coordinate (XY rectangle for XY-only).
+        bounds = {ax: tuple(self.box[ax]) if ax in self.axes else
+                  ((self.pos[i] if self.pos is not None else 0.),)*2
+                  for i,ax in enumerate(_AXES)}
+        return sorted(set((a,b) for a,b in self._box_edges(bounds) if a != b))
+
     def _color(self, st, t):
         if st == APPROACHING and (t * _BLINK_HZ) % 1.0 >= 0.5:
             return _COLOR[OUTSIDE]
@@ -110,7 +128,7 @@ class GeofenceDiag(object):
         m.ns, m.id, m.type, m.action = "geofence", 0, Marker.LINE_LIST, Marker.ADD
         m.pose.orientation.w = 1.0
         m.scale.x = _LINE_W
-        for p0, p1 in self._box_edges({ax: tuple(self.box[ax]) for ax in _AXES}):
+        for p0, p1 in self._fence_edges():
             for x, y, z in (p0, p1):
                 m.points.append(Point(x, y, z))
         m.color.r, m.color.g, m.color.b = self._color(st, now.to_sec())

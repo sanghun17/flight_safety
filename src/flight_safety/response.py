@@ -23,6 +23,7 @@ impact 20..50.
 import rospy
 from mavros_msgs.msg import State, RCIn, PositionTarget
 from sensor_msgs.msg import Imu
+from std_srvs.srv import Trigger, TriggerResponse
 from diagnostic_msgs.msg import DiagnosticStatus
 
 from flight_safety.actions import MavrosActions
@@ -64,6 +65,10 @@ class Response(object):
         self.kill_channel = int(rc.get("kill_channel", 8))      # /mavros/rc/in idx for RC ch9 (RC_MAP_KILL_SW=9)
         self.kill_us = float(rc.get("kill_engaged_us", 1500))   # ch above this = kill engaged (measured 2011 on / 988 off)
 
+        self.allow_external_termination = bool(rospy.get_param("~allow_external_termination", False))
+        self.fcu_received = None
+        self.fcu_connected = False
+        self.termination_busy = False
         self.actions = MavrosActions()
         self.out = rospy.Publisher(rospy.get_param("~setpoint_out", "/mavros/setpoint_raw/local"),
                                    PositionTarget, queue_size=1)
@@ -103,13 +108,37 @@ class Response(object):
                 window_s=td.get("window_s", 0.25))
             rospy.Subscriber(td.get("imu_topic", "/mavros/imu/data"), Imu, self._on_imu, queue_size=10)
 
+        rospy.Service("~request_termination", Trigger, self._request_termination)
+
         hz = float(rospy.get_param("~react_rate_hz", 50.0))
         rospy.Timer(rospy.Duration(1.0 / hz), self._tick)
+
+    def _request_termination(self, _request):
+        # Generic opt-in actuator authority. Mission geometry stays in its planner.
+        now = rospy.Time.now()
+        fresh = self.fcu_received is not None and 0 <= (now-self.fcu_received).to_sec() < 2.0
+        if not self.allow_external_termination:
+            return TriggerResponse(False, "external termination disabled")
+        if not (fresh and self.fcu_connected and self.armed and self.mode == "OFFBOARD"
+                and not self._manual() and self._offboard_admitted and self._normal_is_fresh(now)):
+            return TriggerResponse(False, "fresh armed OFFBOARD with admitted Normal stream required")
+        if self.killed or self._kill() or getattr(self,"termination_busy",False):
+            return TriggerResponse(False, "termination already latched or pending")
+        self.termination_busy = True
+        try:
+            if not self.actions.kill():
+                return TriggerResponse(False, "FCU rejected or failed to acknowledge force-disarm")
+            self.killed = True
+            return TriggerResponse(True, "force-disarm acknowledged; verify armed=false")
+        finally:
+            self.termination_busy = False
 
     def _on_fault(self, m):
         self.fault = m
 
     def _on_state(self, m):
+        self.fcu_received = rospy.Time.now()
+        self.fcu_connected = m.connected
         previous_armed, previous_mode = self.armed, self.mode
         self.armed, self.mode = m.armed, m.mode
 

@@ -1,10 +1,33 @@
 <launch>
+  <arg name="geofence_config" default=""/>
   <!-- Whole flight-safety module: observe (L1+L2) + response (L3, KILL AUTHORITY) + estimator mux. -->
-  <include file="$(find flight_safety)/launch/observe.launch"/>
-  <include file="$(find flight_safety)/launch/response.launch"/>
-  <include file="$(find flight_safety)/launch/estimation_mux.launch"/>
+  <include file="$(find flight_safety)/launch/observe.launch">
+    <arg name="geofence_config" value="$(arg geofence_config)"/>
+  </include>
+  <arg name="allow_external_termination" default="false"/>
+  <include file="$(find flight_safety)/launch/response.launch">
+    <arg name="allow_external_termination" value="$(arg allow_external_termination)"/>
+  </include>
+  <!-- External measurements for EKF2; independent of OFFBOARD commands. -->
+  <arg name="estimation_source" default="mocap"/>
+  <arg name="external_pose_topic" default="/estimation/external_pose"/>
+  <arg name="mocap_pose_topic" default="/vrpn_client_node/pure/pose"/>
+  <arg name="vio_pose_topic" default="/aft_mapped_to_body"/>
+  <arg name="vio_odom_topic" default="/aft_mapped_to_body_imu_propagated"/>
+  <arg name="planning_source" default="mocap"/>
+  <include file="$(find flight_safety)/launch/estimation_mux.launch">
+    <arg name="source" value="$(arg estimation_source)"/>
+    <arg name="mocap_pose_topic" value="$(arg mocap_pose_topic)"/>
+    <arg name="vio_pose_topic" value="$(arg vio_pose_topic)"/>
+    <arg name="vio_odom_topic" value="$(arg vio_odom_topic)"/>
+    <arg name="external_pose_topic" value="$(arg external_pose_topic)"/>
+    <arg name="planning_source" value="$(arg planning_source)"/>
+  </include>
   <!-- arm-triggered flight-safety recorder: ARM -> log fault/state, DISARM -> stop (record_on_arm:=false to disable) -->
   <arg name="record_on_arm" default="true"/>
-  <include file="$(find flight_safety)/launch/recorder.launch" if="$(arg record_on_arm)"/>
+  <arg name="recorder_config" default="$(find flight_safety)/config/recorder.yaml"/>
+  <include file="$(find flight_safety)/launch/recorder.launch" if="$(arg record_on_arm)">
+    <arg name="config" value="$(arg recorder_config)"/>
+  </include>
   <!-- IMU touchdown->KILL is folded INTO response (the LAND maneuver's terminator); see response.yaml 'touchdown:' -->
 </launch>
