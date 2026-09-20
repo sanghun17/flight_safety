@@ -1,9 +1,11 @@
 <launch>
+  <arg name="consistency_config" default=""/>
   <arg name="geofence_config" default=""/>
   <!-- L1 diagnosis: geofence + consistency reporters -> /diagnostics (observe-only). -->
   <arg name="config" default="$(find flight_safety)/config/diagnosis.yaml"/>
   <node pkg="flight_safety" type="diagnosis_node.py" name="flight_safety_diagnosis" output="screen">
     <rosparam command="load" file="$(arg config)"/>
     <rosparam if="$(eval arg('geofence_config') != '')" command="load" file="$(arg geofence_config)" ns="geofence"/>
+    <rosparam if="$(eval arg('consistency_config') != '')" command="load" file="$(arg consistency_config)" ns="consistency"/>
   </node>
 </launch>

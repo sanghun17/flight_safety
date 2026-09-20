@@ -1,8 +1,10 @@
 <launch>
+  <arg name="consistency_config" default=""/>
   <arg name="geofence_config" default=""/>
   <!-- Whole flight-safety module: observe (L1+L2) + response (L3, KILL AUTHORITY) + estimator mux. -->
   <include file="$(find flight_safety)/launch/observe.launch">
     <arg name="geofence_config" value="$(arg geofence_config)"/>
+    <arg name="consistency_config" value="$(arg consistency_config)"/>
   </include>
   <arg name="allow_external_termination" default="false"/>
   <include file="$(find flight_safety)/launch/response.launch">
