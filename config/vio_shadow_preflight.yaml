@@ -213,7 +213,7 @@ evidence:
     clock_domain_publisher_source: external/unqualified/clock_domain_publisher.py
     clock_domain_publisher_build_manifest: external/unqualified/clock_domain_publisher_build.json
     mavros_timesync_plugin: ../../../risk-aware/src/risk_aware_planning/mavros/mavros/src/plugins/sys_time.cpp
-    selected_candidate_overlay: ../../../../tools/fastlivo/vio_ground_phase_b_candidate_development.yaml
+    selected_candidate_overlay: ../../../../modules/odometry/fast-livo/qualification/candidate_overlay.yaml
     fastlivo_base_config: ../../../../ws/fast-livo/src/FAST-LIVO2/config/d435i.yaml
     fastlivo_camera_config: ../../../../ws/fast-livo/src/FAST-LIVO2/config/camera_d435i.yaml
-    fastlivo_build_manifest: ../../../../tools/fastlivo/_campaign_vio_flight_20260814/ground_init_qualification_v1/build_manifest.json
+    fastlivo_build_manifest: ../../../../modules/odometry/fast-livo/qualification/build_manifest.json
