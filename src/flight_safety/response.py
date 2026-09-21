@@ -21,7 +21,7 @@ round-trip. Thresholds (response.yaml touchdown:) were tuned on real landings: d
 impact 20..50.
 """
 import rospy
-from mavros_msgs.msg import State, RCIn, PositionTarget
+from mavros_msgs.msg import State, RCIn, PositionTarget, ExtendedState
 from sensor_msgs.msg import Imu
 from std_srvs.srv import Trigger, TriggerResponse
 from diagnostic_msgs.msg import DiagnosticStatus
@@ -87,12 +87,16 @@ class Response(object):
         self._state_initialized = False
         self._offboard_admitted = False
         self.killed = False       # OUR force-disarm latched (auto, ERROR) -- distinct from pilot kill switch
+        self.external_termination_latched = False
+        self.ground_received = None
+        self.on_ground = False
         self._last_manual = None
         self.in_land = False      # lane==LAND and armed -> arm the touchdown detector (the descent's terminator)
         self.touchdown_fired = False   # latched IMU touchdown -> _tick escalates LAND to KILL
 
         rospy.Subscriber("/flight_safety/fault", Fault, self._on_fault, queue_size=1)
         rospy.Subscriber("/mavros/state", State, self._on_state, queue_size=5)
+        rospy.Subscriber("/mavros/extended_state", ExtendedState, self._on_extended, queue_size=5)
         rospy.Subscriber(rc.get("topic", "/mavros/rc/in"), RCIn, self._on_rc, queue_size=5)
         rospy.Subscriber(rospy.get_param("~normal_in", "/local_controller/setpoint_raw/local"),
                          PositionTarget, self._on_normal, queue_size=1)
@@ -109,6 +113,7 @@ class Response(object):
             rospy.Subscriber(td.get("imu_topic", "/mavros/imu/data"), Imu, self._on_imu, queue_size=10)
 
         rospy.Service("~request_termination", Trigger, self._request_termination)
+        rospy.Service("~reset_external_termination", Trigger, self._reset_external_termination)
 
         hz = float(rospy.get_param("~react_rate_hz", 50.0))
         rospy.Timer(rospy.Duration(1.0 / hz), self._tick)
@@ -129,9 +134,30 @@ class Response(object):
             if not self.actions.kill():
                 return TriggerResponse(False, "FCU rejected or failed to acknowledge force-disarm")
             self.killed = True
+            self.external_termination_latched = True
             return TriggerResponse(True, "force-disarm acknowledged; verify armed=false")
         finally:
             self.termination_busy = False
+
+    def _on_extended(self, message):
+        self.ground_received = rospy.Time.now()
+        self.on_ground = message.landed_state == ExtendedState.LANDED_STATE_ON_GROUND
+
+    def _reset_external_termination(self, _request):
+        now = rospy.Time.now()
+        fresh = self.fcu_received is not None and 0 <= (now-self.fcu_received).to_sec() < 2.
+        ground_fresh = self.ground_received is not None and 0 <= (now-self.ground_received).to_sec() < 2.
+        if not (self.allow_external_termination and fresh and self.fcu_connected
+                and not self.armed and self.mode not in ('OFFBOARD', 'AUTO.LAND')
+                and ground_fresh and self.on_ground and self.fault.level == OK
+                and not self._kill() and not self.termination_busy):
+            return TriggerResponse(False, 'fresh healthy disarmed ground state in pilot mode required')
+        if self.killed and not self.external_termination_latched:
+            return TriggerResponse(False, 'safety termination remains latched')
+        self.killed = False
+        self.external_termination_latched = False
+        self._reset_control_session('external termination reset on ground')
+        return TriggerResponse(True, 'ready for a new pilot-requested control session')
 
     def _on_fault(self, m):
         self.fault = m
@@ -151,7 +177,16 @@ class Response(object):
             return
 
         if self.armed != previous_armed:
+            # A ground-start mission may arm after the pilot has selected
+            # OFFBOARD. Preserve only its already-admitted, still-fresh stream
+            # across this rising arm edge; never carry IdleHold or stale data.
+            prearm = (self.normal, self.normal_stamp) if (
+                self.armed and previous_mode == self.mode == 'OFFBOARD'
+                and self._offboard_admitted and self._normal_is_fresh(rospy.Time.now())) else None
             self._reset_control_session("armed" if self.armed else "disarmed")
+            if prearm is not None:
+                self.normal, self.normal_stamp = prearm
+                self._offboard_admitted = True
         elif previous_mode == "OFFBOARD" and self.mode != "OFFBOARD":
             # The vehicle may remain armed while the operator leaves OFFBOARD
             # to restart the planning/control stack.  Treat re-entry as a new
@@ -243,6 +278,7 @@ class Response(object):
         # armed. In a manual (non-OFFBOARD) mode the pilot owns it -- step back, no land/kill.
         if not manual and (self.armed or not self.require_armed):
             if level >= ERROR or self.touchdown_fired:    # ERROR fault OR touchdown during LAND
+                self.external_termination_latched = False
                 self.killed = True
                 why = "touchdown" if (self.touchdown_fired and level < ERROR) else (", ".join(self.fault.names) or "error")
                 rospy.logfatal("[safety] KILL: %s", why)
