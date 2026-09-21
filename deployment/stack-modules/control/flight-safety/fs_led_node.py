@@ -20,6 +20,8 @@ Color scheme (priority top-down):
   RC offboard, FC NOT offboard (offboard-loss failsafe)   -> GREEN <-> BLUE     (dropped to Position on its own)
   mission hold_failed + healthy commanded OFFBOARD      -> GREEN <-> WHITE    (failed trial, holding)
   mission landing + FC AUTO.LAND                         -> CYAN blink         (intentional landing handoff)
+  ground-start enabled, disarmed POSCTL, ready            -> CYAN solid         (pilot may select OFFBOARD)
+  ground-start enabled, disarmed POSCTL, preparing        -> BLUE <-> WHITE     (wait in POSCTL)
   NORMAL (offboard) + setpoint fresh                      -> GREEN solid        (autonomous, commanded)
   NORMAL (offboard) + no setpoint                         -> GREEN blink        (offboard starving)
   MANUAL  mode==POSCTL                                    -> BLUE solid         (pilot position hold)
@@ -153,6 +155,15 @@ class LedNode(object):
         # 3. offboard-loss failsafe: RC still asks offboard but FC dropped to another mode
         if rc and self.mode_offb and mode != "OFFBOARD":
             return GREEN, BLUE, FAILSAFE_HZ
+
+        # Optional generic ground-start readiness. Never masks kill/fault,
+        # failsafe, an armed vehicle, or an expired mission hint.
+        if (mission and mission.get("ground_start_enabled") is True
+                and self.state.level == 0 and lane == "MANUAL" and mode == "POSCTL"
+                and not self.state.armed):
+            if mission.get("offboard_entry_ready") is True:
+                return CYAN, OFF, 0.0
+            return BLUE, WHITE, 2.0
 
         # 4. control lane
         if lane == "NORMAL":
