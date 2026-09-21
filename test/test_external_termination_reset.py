@@ -50,3 +50,16 @@ def test_arm_edge_preserves_only_current_admitted_prearm_stream(monkeypatch,admi
     r._on_state(SimpleNamespace(connected=True,armed=True,mode='OFFBOARD'))
     assert (r.normal is command)==preserve
     assert r._offboard_admitted==preserve
+
+
+def test_admitted_arm_edge_never_temporarily_clears_normal(monkeypatch):
+    r=response(monkeypatch);r._state_initialized=True;r.mode='OFFBOARD'
+    r.normal=object();command=r.normal;r.normal_stamp=rospy.Time.from_sec(9.9)
+    r._offboard_admitted=True;r._normal_is_fresh=lambda now:True
+    r.idle_hold=object()
+    def reject_transient_reset(reason):
+        pytest.fail('Concurrent response timer could observe an empty Normal stream')
+    r._reset_control_session=reject_transient_reset
+    r._on_state(SimpleNamespace(connected=True,armed=True,mode='OFFBOARD'))
+    assert r.normal is command and r._offboard_admitted
+    assert r.idle_hold is None

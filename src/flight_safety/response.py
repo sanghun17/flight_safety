@@ -183,10 +183,12 @@ class Response(object):
             prearm = (self.normal, self.normal_stamp) if (
                 self.armed and previous_mode == self.mode == 'OFFBOARD'
                 and self._offboard_admitted and self._normal_is_fresh(rospy.Time.now())) else None
-            self._reset_control_session("armed" if self.armed else "disarmed")
             if prearm is not None:
-                self.normal, self.normal_stamp = prearm
-                self._offboard_admitted = True
+                # The timer runs concurrently: clearing then restoring Normal
+                # would expose a transient missing stream and reject OFFBOARD.
+                self.idle_hold = None
+            else:
+                self._reset_control_session("armed" if self.armed else "disarmed")
         elif previous_mode == "OFFBOARD" and self.mode != "OFFBOARD":
             # The vehicle may remain armed while the operator leaves OFFBOARD
             # to restart the planning/control stack.  Treat re-entry as a new
