@@ -117,11 +117,15 @@ def test_git_trust_is_scoped_to_configured_repository(tmp_path):
     commands = []
     def runner(command, timeout):
         commands.append(command)
+        config_root = command[1].split('=', 1)[1]
+        with open(os.path.join(config_root, 'git', 'config')) as stream:
+            assert stream.read() == '[safe]\n\tdirectory = "' + str(tmp_path.resolve()) + '"\n'
         return dict(ok=True, returncode=0, stdout='true\n', stderr='', error=None)
     recorder = RuntimeManifestRecorder(True, {'component': str(tmp_path)}, {}, command_runner=runner)
     recorder._git(str(tmp_path), ['rev-parse', 'HEAD'])
-    assert commands == [['git', '-c', 'safe.directory=' + str(tmp_path.resolve()),
-                         '-C', str(tmp_path.resolve()), 'rev-parse', 'HEAD']]
+    assert commands[0][0] == 'env'
+    assert commands[0][2:] == ['git', '-C', str(tmp_path.resolve()), 'rev-parse', 'HEAD']
+    assert not os.path.exists(commands[0][1].split('=', 1)[1])
 
 
 def test_git_snapshot_records_real_commit_and_dirty_state(tmp_path):

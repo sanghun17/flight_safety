@@ -23,6 +23,7 @@ import os
 import platform
 import socket
 import subprocess
+import tempfile
 import threading
 
 import yaml
@@ -290,8 +291,16 @@ class RuntimeManifestRecorder(object):
         # host user while this recorder runs as root in the container. Trust
         # only this repository for this invocation; never change global config.
         resolved = os.path.realpath(os.path.expanduser(path))
-        return self._run(["git", "-c", "safe.directory=" + resolved,
-                          "-C", resolved] + list(args))
+        # Ubuntu's patched Git 2.25 ignores command-line safe.directory. An
+        # ephemeral XDG config has global scope without modifying user config.
+        with tempfile.TemporaryDirectory(prefix="manifest-git-") as directory:
+            git_config = os.path.join(directory, "git")
+            os.mkdir(git_config)
+            escaped = resolved.replace('\\', '\\\\').replace('"', '\\"').replace('\n', '\\n')
+            with open(os.path.join(git_config, "config"), "w") as stream:
+                stream.write('[safe]\n\tdirectory = "' + escaped + '"\n')
+            return self._run(["env", "XDG_CONFIG_HOME=" + directory,
+                              "git", "-C", resolved] + list(args))
 
     def _bounded_text(self, command_result):
         text = command_result["stdout"]
