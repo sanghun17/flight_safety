@@ -6,5 +6,5 @@ set -e
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd)"
 DST="$ROOT/ws/flight-safety/src/flight_safety"
 REPO="${SAFETY_REPO:-git@github.com:sanghun17/flight_safety.git}"
-BRANCH="${SAFETY_REVISION:-55df0fc735996c5ee2654e819fad09a73a7bea15}"
+BRANCH="${SAFETY_REVISION:-68971725c43fc034dd02a4e7f47878528c2f7df4}"
 bash "$ROOT/scripts/lib/clone_repo.sh" "$DST" "$REPO" "$BRANCH"
