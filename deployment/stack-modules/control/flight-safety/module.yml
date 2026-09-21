@@ -1,0 +1,22 @@
+name: flight-safety
+group: control
+description: Layered standalone flight safety — diagnosis, fault monitor, response/setpoint mux, and estimator mux. Builds in ws/flight-safety and consumes the distro MAVROS message API.
+
+needs: [utility/gui-vnc]
+
+deps:
+  apt:
+    - ros-noetic-diagnostic-updater
+    - ros-noetic-rqt-runtime-monitor   # /diagnostics view that run.sh opens in a browser
+    - ros-noetic-topic-tools           # topic_tools/mux for the estimator mux
+    - ros-noetic-mavros-msgs
+  arm64:
+    pip:
+      - Jetson.GPIO                     # optional APA102 status LED on Jetson
+
+clone: clone.sh
+workspace: /work/ws/flight-safety
+# run.sh = the WHOLE module at once (observe + response/KILL + estimator mux + diagnostic GUI)
+# -> scripts/control_flight-safety.sh. Ctrl-C kills all of it. Actuation gated by require_armed.
+run: [run.sh]
+provides: [flight-safety, vision-pose]
