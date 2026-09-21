@@ -85,3 +85,59 @@ def test_disabled_manifest_is_a_noop(tmp_path):
     bag = str(tmp_path / "flight.bag")
     assert manifest.start(bag, {}, ["rosbag", "record"]) is None
     assert manifest.finish(bag, bag, {}) is None
+
+
+def test_config_snapshot_preserves_shell_and_launch_text(tmp_path):
+    env = tmp_path / "runtime.env"
+    text = '# configuration\nexport SPEED=0.5\nexport KEEP="${KEEP:-true}"\n'
+    env.write_text(text)
+    launch = tmp_path / "trial.launch"
+    launch.write_text('<launch>\n  <arg name="speed" default="0.5"/>\n</launch>\n')
+    config = tmp_path / "controller.yaml"
+    config.write_text('speed: 0.5\n')
+    recorder = RuntimeManifestRecorder(True, {}, {
+        'environment': str(env), 'launch': str(launch), 'controller': str(config)
+    }, command_runner=_runner)
+    snapshot = recorder._capture_snapshot('start', {})
+    assert snapshot['config_files']['environment']['content'] == text
+    assert snapshot['config_files']['launch']['content'] == launch.read_text()
+    assert snapshot['config_files']['controller']['content'] == {'speed': .5}
+    assert all('error' not in f for f in snapshot['config_files'].values())
+    assert snapshot['model_artifacts'] == {'applicable': False}
+
+
+def test_invalid_yaml_still_reports_capture_error(tmp_path):
+    config = tmp_path / 'broken.yaml'
+    config.write_text('speed: [\n')
+    recorder = RuntimeManifestRecorder(True, {}, {}, command_runner=_runner)
+    assert 'error' in recorder._inspect_file(str(config), parse_yaml=True)
+
+
+def test_git_trust_is_scoped_to_configured_repository(tmp_path):
+    commands = []
+    def runner(command, timeout):
+        commands.append(command)
+        return dict(ok=True, returncode=0, stdout='true\n', stderr='', error=None)
+    recorder = RuntimeManifestRecorder(True, {'component': str(tmp_path)}, {}, command_runner=runner)
+    recorder._git(str(tmp_path), ['rev-parse', 'HEAD'])
+    assert commands == [['git', '-c', 'safe.directory=' + str(tmp_path.resolve()),
+                         '-C', str(tmp_path.resolve()), 'rev-parse', 'HEAD']]
+
+
+def test_git_snapshot_records_real_commit_and_dirty_state(tmp_path):
+    import subprocess
+    def git(*args):
+        return subprocess.check_output(['git', '-C', str(tmp_path)] + list(args), text=True).strip()
+    git('init')
+    config = tmp_path / 'config.yaml'
+    config.write_text('speed: 0.5\n')
+    git('add', 'config.yaml')
+    git('-c', 'user.name=Test', '-c', 'user.email=test@example.invalid', 'commit', '-m', 'Initial config')
+    recorder = RuntimeManifestRecorder(True, {'component': str(tmp_path)}, {})
+    snapshot = recorder._capture_git(str(tmp_path))
+    assert snapshot['head'] == git('rev-parse', 'HEAD')
+    assert snapshot['dirty'] is False
+    config.write_text('speed: 2.0\n')
+    snapshot = recorder._capture_git(str(tmp_path))
+    assert snapshot['dirty'] is True
+    assert '+speed: 2.0' in snapshot['worktree_diff']['content']

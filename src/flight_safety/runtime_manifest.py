@@ -188,7 +188,9 @@ class RuntimeManifestRecorder(object):
         for name, path in sorted(self.repo_paths.items()):
             snapshot["repositories"][name] = self._capture_git(path)
         for name, path in sorted(self.config_paths.items()):
-            snapshot["config_files"][name] = self._inspect_file(path, parse_yaml=True)
+            structured = os.path.splitext(path)[1].lower() in (".yaml", ".yml", ".json")
+            snapshot["config_files"][name] = self._inspect_file(
+                path, parse_yaml=structured, capture_text=True)
         snapshot["model_artifacts"] = self._capture_model_artifacts(
             snapshot["config_files"].get("planning"))
         snapshot["fingerprint_sha256"] = _fingerprint(snapshot)
@@ -284,7 +286,12 @@ class RuntimeManifestRecorder(object):
         return result
 
     def _git(self, path, args):
-        return self._run(["git", "-C", path] + list(args))
+        # Explicitly configured bind-mounted repositories may be owned by the
+        # host user while this recorder runs as root in the container. Trust
+        # only this repository for this invocation; never change global config.
+        resolved = os.path.realpath(os.path.expanduser(path))
+        return self._run(["git", "-c", "safe.directory=" + resolved,
+                          "-C", resolved] + list(args))
 
     def _bounded_text(self, command_result):
         text = command_result["stdout"]
@@ -302,7 +309,7 @@ class RuntimeManifestRecorder(object):
             "error": command_result.get("error"),
         }
 
-    def _inspect_file(self, path, parse_yaml):
+    def _inspect_file(self, path, parse_yaml, capture_text=False):
         expanded = os.path.expanduser(path)
         result = {"path": path, "resolved_path": expanded, "exists": os.path.isfile(expanded)}
         if not result["exists"]:
@@ -318,6 +325,9 @@ class RuntimeManifestRecorder(object):
             if parse_yaml:
                 with open(expanded, "r") as stream:
                     result["content"] = _plain(yaml.safe_load(stream))
+            elif capture_text:
+                with open(expanded, "r") as stream:
+                    result["content"] = stream.read()
         except Exception as exc:
             result["error"] = str(exc)
             self._error("file capture failed for %s: %s" % (expanded, exc))
@@ -331,6 +341,8 @@ class RuntimeManifestRecorder(object):
 
     def _capture_model_artifacts(self, planning_file):
         result = {}
+        if planning_file is None:
+            return {"applicable": False}
         content = (planning_file or {}).get("content")
         ete = content.get("ete_net") if isinstance(content, dict) else None
         if not isinstance(ete, dict):
