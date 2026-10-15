@@ -105,3 +105,13 @@ VRPN과 `/mavros/local_position`은 **같은 프레임/원점이라 그냥 같�
 ```bash
 roslaunch flight_safety safety.launch    # KILL 권한 — 의도적으로 실행할 때만
 ```
+
+Emergency LAND is latched once an armed OFFBOARD warning starts descent. Clearing
+that warning cannot resume Normal commands or IdleHold: response discards both
+until disarm or pilot takeover. IMU touchdown remains active throughout the
+latched descent, including after the warning clears. Fresh FCU ON_GROUND samples
+received after LAND entry can also terminate descent after `land.ground_confirm_s`
+(default 0.3 s); missing/stale ground or FCU state never confirms contact. Terminal
+force-disarm requests retry at most once per second until disarm is reported;
+manual modes and the pilot kill switch retain authority. A safety KILL still
+requires restarting safety while disarmed before a new flight.

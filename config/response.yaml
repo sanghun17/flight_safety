@@ -9,6 +9,8 @@ normal_timeout_s: 0.5                         # OFFBOARD entry requires a Normal
 idle_hold: true                               # after valid entry only; cleared on arm/session changes
 
 land:
+  ground_confirm_s: 0.3                     # continuous fresh ON_GROUND after LAND entry -> force-disarm
+  ground_timeout_s: 1.0                     # stale extended state never confirms ground
   descend_mps: 1.0                           # WARN -> emergency descend in place (vx=vy=yawrate=0, vz=-1 m/s; fast on purpose)
 
 touchdown:                                   # IMU touchdown DURING LAND -> escalate to KILL (the LAND maneuver's terminator, in-process)

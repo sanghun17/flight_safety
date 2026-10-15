@@ -3,7 +3,7 @@
   kill switch engaged -> KILL    (pilot already force-terminated via PX4; we only reflect it, never actuate)
   manual RC present    -> MANUAL  (hand to pilot: switch to manual_mode)
   level OK             -> NORMAL  (passthrough the planner setpoint on normal_in)
-  level WARN           -> LAND    (descend in place)
+  level WARN           -> LAND    (latched descent until ground/disarm or pilot takeover)
   level ERROR          -> KILL    (force-disarm; terminal)
 
 Priority: kill > manual > ERROR > WARN > OK. The pilot kill switch is an authority/terminal
@@ -13,6 +13,11 @@ mistaken for a WARN-that-lands. Severity IS the policy for the health monitors; 
 LAND/KILL actuation is gated by require_armed; the NORMAL setpoint stream is forwarded even when
 disarmed (so OFFBOARD entry sees a live stream); state is published every tick for visibility.
 
+Once armed OFFBOARD LAND begins, clearing WARN cannot restore NORMAL/IdleHold.
+Fresh FCU ON_GROUND held for ground_confirm_s, or a confirmed IMU touchdown,
+requests force-disarm; terminal requests retry at most once per second until FCU
+disarm confirmation. Pilot non-OFFBOARD modes always retain control.
+
 During LAND, a confirmed IMU touchdown (flight_safety.touchdown: world-vertical specific-force
 spike + airframe roll) escalates the lane to KILL. Touchdown is the LAND maneuver's TERMINATOR --
 not an independent health monitor -- so its detector runs IN this node (gated to the descent),
@@ -20,6 +25,7 @@ keeping response the SOLE kill authority under the same not-manual + armed gate,
 round-trip. Thresholds (response.yaml touchdown:) were tuned on real landings: descent vert<=~13,
 impact 20..50.
 """
+import math
 import rospy
 from mavros_msgs.msg import State, RCIn, PositionTarget, ExtendedState
 from sensor_msgs.msg import Imu
@@ -50,6 +56,17 @@ class Response(object):
     def __init__(self):
         self.require_armed = bool(rospy.get_param("~require_armed", True))
         self.descend = abs(float(rospy.get_param("~land", {}).get("descend_mps", 0.4)))
+        land = rospy.get_param("~land", {})
+        self.ground_confirm_s = float(land.get("ground_confirm_s", .3))
+        self.ground_timeout_s = float(land.get("ground_timeout_s", 1.))
+        if not all(math.isfinite(v) and v>0 for v in
+                   (self.descend,self.ground_confirm_s,self.ground_timeout_s)):
+            raise ValueError("LAND speed and ground-confirmation thresholds must be finite and positive")
+        self.land_latched = False
+        self.land_started = None
+        self.ground_since = None
+        self.emergency_disarm_pending = False
+        self.emergency_disarm_retry_at = None
         self.normal_timeout = float(rospy.get_param("~normal_timeout_s", 0.5))   # drop a stale planner setpoint
         # IdleHold: when the Normal stream goes stale, hold the LAST commanded position
         # (lowest priority, below Normal). Set ~idle_hold:=false to restore the original
@@ -141,7 +158,13 @@ class Response(object):
 
     def _on_extended(self, message):
         self.ground_received = rospy.Time.now()
-        self.on_ground = message.landed_state == ExtendedState.LANDED_STATE_ON_GROUND
+        stamp=message.header.stamp
+        sample_fresh=not stamp.is_zero() and -.05<=(self.ground_received-stamp).to_sec()<self.ground_timeout_s
+        self.on_ground = sample_fresh and message.landed_state == ExtendedState.LANDED_STATE_ON_GROUND
+        if (self.land_latched and self.armed and self.mode=='OFFBOARD' and self.on_ground
+                and self.land_started is not None and self.ground_received>self.land_started):
+            if self.ground_since is None:self.ground_since=self.ground_received
+        else:self.ground_since=None
 
     def _reset_external_termination(self, _request):
         now = rospy.Time.now()
@@ -167,6 +190,11 @@ class Response(object):
         self.fcu_connected = m.connected
         previous_armed, previous_mode = self.armed, self.mode
         self.armed, self.mode = m.armed, m.mode
+
+        if not self.armed:
+            self.emergency_disarm_pending=False
+            if self.mode not in ('OFFBOARD','AUTO.LAND'):
+                self.land_latched=False;self.land_started=None;self.ground_since=None
 
         if not self._state_initialized:
             self._state_initialized = True
@@ -212,6 +240,8 @@ class Response(object):
         self.rc = list(m.channels)
 
     def _on_normal(self, m):
+        # An emergency owns this arm session, even after its triggering fault clears.
+        if self.land_latched or self.killed:return
         self.normal = m
         self.normal_stamp = rospy.Time.now()
         # Latch this command's POSITION for the IdleHold fallback. Only commands that
@@ -259,13 +289,39 @@ class Response(object):
         i = self.kill_channel
         return i < len(self.rc) and self.rc[i] > self.kill_us
 
+    def _land_ground_confirmed(self, now):
+        fresh=(self.ground_received is not None and self.fcu_received is not None
+               and 0<=(now-self.ground_received).to_sec()<self.ground_timeout_s
+               and 0<=(now-self.fcu_received).to_sec()<2. and self.fcu_connected)
+        if not fresh:
+            self.ground_since=None
+            return False
+        return bool(self.on_ground and self.ground_since is not None
+                    and (now-self.ground_since).to_sec()>=self.ground_confirm_s)
+
+    def _retry_emergency_disarm(self, now, initial=False):
+        # Keep all planner/IdleHold output blocked until FCU reports disarmed.
+        if not self.emergency_disarm_pending or not self.armed:return
+        if self._manual() or self._kill():return
+        if not initial and (self.fcu_received is None or not self.fcu_connected
+                or not 0<=(now-self.fcu_received).to_sec()<2.):return
+        if self.emergency_disarm_retry_at is not None and now<self.emergency_disarm_retry_at:return
+        self.emergency_disarm_retry_at=now+rospy.Duration(1.)
+        self.actions.kill()
+
     def _tick(self, _evt):
         now = rospy.Time.now()
         normal_fresh = self._normal_is_fresh(now)
         level = self.fault.level
         kill = self._kill()
         manual = self._manual()
-        lane = "KILL" if (kill or self.killed) else ("MANUAL" if manual else _LANE.get(level, "NORMAL"))
+        if not manual and self.armed and level==WARN and not self.killed and not kill and not self.land_latched:
+            self.land_latched=True;self.land_started=now;self.ground_since=None
+            self.normal=None;self.normal_stamp=rospy.Time(0);self.idle_hold=None
+            normal_fresh=False
+            rospy.logerr("[safety] emergency LAND latched until disarm/pilot takeover; Normal blocked")
+        lane = "KILL" if (kill or self.killed) else ("MANUAL" if manual else
+                "KILL" if level>=ERROR else "LAND" if self.land_latched else _LANE.get(level, "NORMAL"))
 
         self.in_land = (lane == "LAND" and self.armed)   # arm the touchdown detector only on a real descent
         if not self.in_land:
@@ -273,22 +329,31 @@ class Response(object):
 
         self._publish_state(now, lane, manual, kill)   # always, even disarmed
 
-        if self.killed or kill:               # terminated -- reflect only, never forward/fight it
+        if self.killed or kill:
+            if self.killed and not kill:self._retry_emergency_disarm(now)
             return
 
         # LAND/KILL actuation: only when flight_safety owns the vehicle (OFFBOARD, not manual) and
         # armed. In a manual (non-OFFBOARD) mode the pilot owns it -- step back, no land/kill.
         if not manual and (self.armed or not self.require_armed):
-            if level >= ERROR or self.touchdown_fired:    # ERROR fault OR touchdown during LAND
+            ground_done=self.land_latched and self._land_ground_confirmed(now)
+            if level >= ERROR or self.touchdown_fired or ground_done:
                 self.external_termination_latched = False
                 self.killed = True
-                why = "touchdown" if (self.touchdown_fired and level < ERROR) else (", ".join(self.fault.names) or "error")
+                why = (", ".join(self.fault.names) or "error") if level>=ERROR else (
+                    "confirmed FCU ground state" if ground_done else "touchdown")
                 rospy.logfatal("[safety] KILL: %s", why)
-                self.actions.kill()
+                self.normal=None;self.idle_hold=None
+                self.emergency_disarm_pending=True;self.emergency_disarm_retry_at=None
+                self._retry_emergency_disarm(now,initial=True)
                 return
-            if level >= WARN:
+            if level >= WARN or self.land_latched:
                 self._publish_setpoint(self._land_sp())
                 return
+
+        # A pilot takeover suspends actuation; it never releases emergency commands
+        # back to Normal while still armed. The FCU ignores OFFBOARD setpoints in manual.
+        if self.land_latched:return
 
         # OFFBOARD entry is valid only after this arm/control session has
         # received a fresh Normal setpoint.  IdleHold remains available after
