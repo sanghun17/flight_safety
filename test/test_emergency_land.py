@@ -117,3 +117,17 @@ def test_stale_measurement_header_cannot_confirm_ground(node):
     m=ExtendedState();m.header.stamp=rospy.Time.from_sec(1.);m.landed_state=m.LANDED_STATE_ON_GROUND
     c[0]=10.1;r._on_extended(m);tick(r,c,10.5)
     assert not r.on_ground;r.actions.kill.assert_not_called()
+
+
+def test_ground_session_reset_during_tick_never_kills_state_timer(node,monkeypatch):
+    r,c=node;normal(r)
+    publish_state=r._publish_state
+    def reset_between_freshness_check_and_forward(*args):
+        publish_state(*args)
+        r._reset_control_session('concurrent ground-mode callback')
+    monkeypatch.setattr(r,'_publish_state',reset_between_freshness_check_and_forward)
+    r._tick(None)
+    r.out.publish.assert_not_called()
+    assert r.state_pub.publish.call_count==1
+    r._tick(None)
+    assert r.state_pub.publish.call_count==2

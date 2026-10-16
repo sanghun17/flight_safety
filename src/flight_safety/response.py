@@ -396,6 +396,9 @@ class Response(object):
         return t
 
     def _publish_setpoint(self, sp):
+        # State/reset callbacks can clear Normal or IdleHold after the timer's
+        # freshness check. Skip that sample; never kill the response timer.
+        if sp is None:return
         sp.header.stamp = rospy.Time.now()
         self.out.publish(sp)
 
