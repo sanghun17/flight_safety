@@ -26,6 +26,8 @@ Params (set in launch/config/recorder.yaml):
   ~prefix      bag basename prefix (default "flight")
   ~record_all  true -> `rosbag record -a` (everything); else record ~topics
   ~topics      list of topics to record when record_all is false
+  ~conditional_topic_groups  extra topics matched against a fresh JSON String
+      status field at ARM; fixed for the entire bag (default none)
   ~lz4         lz4-compress the bag (default true)
   ~stop_settle seconds to wait for a clean SIGINT exit before escalating (default 10)
   ~webcam_enable     also drive the webcam recorder on ARM/DISARM (default true)
@@ -46,10 +48,13 @@ import signal
 import subprocess
 import datetime
 import threading
+import time
 import rospy
 from mavros_msgs.msg import State
+from std_msgs.msg import String
 from std_srvs.srv import Trigger
 from flight_safety.runtime_manifest import RuntimeManifestRecorder
+from flight_safety.recording_topics import RecordingTopics
 
 
 class ArmRecorder(object):
@@ -58,6 +63,10 @@ class ArmRecorder(object):
         self.prefix = rospy.get_param("~prefix", "flight")
         self.record_all = bool(rospy.get_param("~record_all", False))
         self.topics = list(rospy.get_param("~topics", []))
+        self.recording_topics = RecordingTopics(rospy.get_param("~conditional_topic_groups", []))
+        self.status_subscribers = [rospy.Subscriber(
+            topic, String, self._recording_status, callback_args=topic, queue_size=1)
+            for topic in self.recording_topics.status_topics]
         self.exclude = rospy.get_param("~exclude", "")   # record_all -> rosbag record -a -x <regex>
         self.lz4 = bool(rospy.get_param("~lz4", True))
         self.settle = float(rospy.get_param("~stop_settle", 10.0))
@@ -100,7 +109,7 @@ class ArmRecorder(object):
         if self.odom_history_enable:
             rospy.loginfo("[arm_recorder] odom history via ROS service %s / %s",
                           self.odom_history_start_srv, self.odom_history_stop_srv)
-        if not self.record_all and not self.topics:
+        if not self.record_all and not self.topics and not self.recording_topics.groups:
             rospy.logwarn("[arm_recorder] record_all=false but ~topics is empty -> nothing to record")
         self._recover_orphans()   # boot self-heal: re-queue bags whose recorder died before marking .ready
         rospy.Subscriber("/mavros/state", State, self._on_state, queue_size=5)
@@ -118,6 +127,9 @@ class ArmRecorder(object):
             self.armed = False
             self._stop()
 
+    def _recording_status(self, message, topic):
+        self.recording_topics.observe(topic, message.data, time.monotonic())
+
     def _start(self):
         if self.proc is not None and self.proc.poll() is None:
             rospy.logwarn("[arm_recorder] ARM but a recording is already running -> skip")
@@ -132,7 +144,10 @@ class ArmRecorder(object):
             if self.exclude:
                 cmd += ["-x", self.exclude]
         else:
-            cmd += self.topics
+            selected, decisions = self.recording_topics.select(self.topics, time.monotonic())
+            cmd += selected
+            for decision in decisions:
+                rospy.loginfo('[arm_recorder] conditional topics: %s', decision)
         # start in its own process group so our SIGINT goes to record, not the launcher
         self.proc = subprocess.Popen(cmd, preexec_fn=os.setsid)
         rospy.loginfo("[arm_recorder] ARMED -> recording -> %s (pid %d)", self.cur_bag, self.proc.pid)
